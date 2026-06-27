@@ -4,16 +4,20 @@
     {
       "src": "api/generate.py",
       "use": "@vercel/python"
+    },
+    {
+      "src": "public/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
     {
-      "src": "/api/(.*)",
+      "src": "/api/generate",
       "dest": "/api/generate.py"
     },
     {
-      "src": "/",
-      "dest": "/api/generate.py"
+      "src": "/(.*)",
+      "dest": "/public/$1"
     }
   ]
 }

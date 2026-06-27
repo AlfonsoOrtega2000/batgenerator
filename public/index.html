@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Generador de Scripts .BAT</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 24px 16px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+    header h1 {
+      font-size: 1.7rem;
+      font-weight: 700;
+      color: #60a5fa;
+      letter-spacing: -0.5px;
+    }
+    header p {
+      font-size: 0.85rem;
+      color: #64748b;
+      margin-top: 4px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    @media (max-width: 640px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: #1e2130;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .panel-title {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #60a5fa;
+      margin-bottom: 16px;
+    }
+
+    /* Pasos disponibles */
+    .step-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      background: #252840;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      color: #e2e8f0;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background 0.15s, border-color 0.15s;
+      margin-bottom: 8px;
+      text-align: left;
+    }
+    .step-btn:hover { background: #2e325a; border-color: #60a5fa; }
+    .step-btn .icon {
+      font-size: 1.1rem;
+      flex-shrink: 0;
+    }
+    .step-btn .plus {
+      margin-left: auto;
+      color: #60a5fa;
+      font-size: 1.1rem;
+      font-weight: bold;
+    }
+
+    /* Lista de pasos seleccionados */
+    #selected-list { min-height: 120px; }
+
+    .selected-item {
+      background: #252840;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      position: relative;
+    }
+    .selected-item-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .selected-item-header .num {
+      background: #60a5fa;
+      color: #0f1117;
+      font-size: 0.7rem;
+      font-weight: 700;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .selected-item-header .label {
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+    .selected-item-header .del-btn {
+      margin-left: auto;
+      background: none;
+      border: none;
+      color: #ef4444;
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0 4px;
+      line-height: 1;
+    }
+    .selected-item-header .del-btn:hover { color: #fca5a5; }
+
+    .param-group { margin-bottom: 8px; }
+    .param-group:last-child { margin-bottom: 0; }
+    .param-group label {
+      display: block;
+      font-size: 0.72rem;
+      color: #94a3b8;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+    .param-group input {
+      width: 100%;
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.88rem;
+      padding: 7px 10px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .param-group input:focus { border-color: #60a5fa; }
+    .param-group input::placeholder { color: #475569; }
+
+    .empty-msg {
+      text-align: center;
+      color: #475569;
+      font-size: 0.85rem;
+      padding: 32px 0;
+    }
+
+    /* Sección inferior */
+    .bottom {
+      max-width: 960px;
+      margin: 24px auto 0;
+      background: #1e2130;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      gap: 16px;
+      align-items: flex-end;
+    }
+    .name-group { flex: 1; }
+    .name-group label {
+      display: block;
+      font-size: 0.72rem;
+      color: #60a5fa;
+      margin-bottom: 5px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .name-group input {
+      width: 100%;
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 1rem;
+      padding: 10px 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .name-group input:focus { border-color: #60a5fa; }
+
+    #gen-btn {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 24px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    #gen-btn:hover { background: #1d4ed8; }
+    #gen-btn:disabled { background: #334155; color: #64748b; cursor: default; }
+
+    #status {
+      max-width: 960px;
+      margin: 12px auto 0;
+      font-size: 0.85rem;
+      text-align: center;
+      min-height: 20px;
+      color: #94a3b8;
+    }
+    #status.ok  { color: #4ade80; }
+    #status.err { color: #f87171; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>&#9881; Generador de Scripts .BAT</h1>
+  <p>Selecciona pasos, configura los par&aacute;metros y descarga tu script listo para ejecutar en Windows.</p>
+</header>
+
+<div class="layout">
+
+  <!-- Panel izquierdo: pasos disponibles -->
+  <div class="panel">
+    <div class="panel-title">Pasos disponibles</div>
+
+    <button class="step-btn" onclick="addStep('crear_carpeta')">
+      <span class="icon">&#128193;</span>
+      <span>Crear carpeta</span>
+      <span class="plus">+</span>
+    </button>
+
+    <button class="step-btn" onclick="addStep('compartir_red')">
+      <span class="icon">&#127760;</span>
+      <span>Compartir carpeta en red</span>
+      <span class="plus">+</span>
+    </button>
+
+    <button class="step-btn" onclick="addStep('visible_red')">
+      <span class="icon">&#128268;</span>
+      <span>Habilitar visibilidad en red</span>
+      <span class="plus">+</span>
+    </button>
+
+    <button class="step-btn" onclick="addStep('acceso_directo')">
+      <span class="icon">&#128279;</span>
+      <span>Acceso directo en escritorio</span>
+      <span class="plus">+</span>
+    </button>
+
+    <button class="step-btn" onclick="addStep('copiar_archivos')">
+      <span class="icon">&#128451;</span>
+      <span>Copiar archivos</span>
+      <span class="plus">+</span>
+    </button>
+
+    <button class="step-btn" onclick="addStep('ejecutar_comando')">
+      <span class="icon">&#9648;</span>
+      <span>Ejecutar comando personalizado</span>
+      <span class="plus">+</span>
+    </button>
+  </div>
+
+  <!-- Panel derecho: pasos seleccionados -->
+  <div class="panel">
+    <div class="panel-title">Pasos seleccionados</div>
+    <div id="selected-list">
+      <div class="empty-msg">Haz clic en un paso para agregarlo &#8594;</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Nombre + botón -->
+<div class="bottom">
+  <div class="name-group">
+    <label>Nombre del script</label>
+    <input type="text" id="script-name" placeholder="Escaner HP" value="" />
+  </div>
+  <button id="gen-btn" onclick="generate()">&#11015; Generar .BAT</button>
+</div>
+
+<div id="status"></div>
+
+<script>
+  const STEPS_META = {
+    crear_carpeta: {
+      label: '📁 Crear carpeta',
+      params: [
+        { key: 'nombre',  label: 'Nombre de la carpeta',          placeholder: 'Escaner HP' },
+        { key: 'ruta',    label: 'Ruta base (sin barra al final)', placeholder: 'C:',         default: 'C:' },
+      ]
+    },
+    compartir_red: {
+      label: '🌐 Compartir en red',
+      params: [
+        { key: 'nombre_compartido', label: 'Nombre del recurso compartido', placeholder: 'Escaner HP' },
+        { key: 'ruta_completa',     label: 'Ruta completa de la carpeta',   placeholder: 'C:\\Escaner HP' },
+      ]
+    },
+    visible_red: {
+      label: '🔌 Habilitar visibilidad en red',
+      params: []
+    },
+    acceso_directo: {
+      label: '🔗 Acceso directo en escritorio',
+      params: [
+        { key: 'nombre',        label: 'Nombre del acceso directo', placeholder: 'Escaner HP' },
+        { key: 'ruta_completa', label: 'Ruta completa de la carpeta', placeholder: 'C:\\Escaner HP' },
+      ]
+    },
+    copiar_archivos: {
+      label: '🗃 Copiar archivos',
+      params: [
+        { key: 'origen',  label: 'Ruta origen',  placeholder: 'C:\\origen' },
+        { key: 'destino', label: 'Ruta destino', placeholder: 'D:\\backup' },
+      ]
+    },
+    ejecutar_comando: {
+      label: '▰ Ejecutar comando',
+      params: [
+        { key: 'descripcion', label: 'Descripción',      placeholder: 'Mi comando' },
+        { key: 'comando',     label: 'Comando a ejecutar', placeholder: 'echo Hola' },
+      ]
+    },
+  };
+
+  let steps = [];   // [{type, id, params:{}}]
+  let nextId = 0;
+
+  function addStep(type) {
+    const meta = STEPS_META[type];
+    const params = {};
+    meta.params.forEach(p => { params[p.key] = p.default || ''; });
+    steps.push({ type, id: nextId++, params });
+    render();
+  }
+
+  function removeStep(id) {
+    steps = steps.filter(s => s.id !== id);
+    render();
+  }
+
+  function render() {
+    const list = document.getElementById('selected-list');
+    if (steps.length === 0) {
+      list.innerHTML = '<div class="empty-msg">Haz clic en un paso para agregarlo &#8594;</div>';
+      return;
+    }
+
+    list.innerHTML = steps.map((s, idx) => {
+      const meta = STEPS_META[s.type];
+      const paramsHtml = meta.params.map(p => `
+        <div class="param-group">
+          <label>${p.label}</label>
+          <input type="text"
+            placeholder="${p.placeholder}"
+            value="${escHtml(s.params[p.key])}"
+            oninput="updateParam(${s.id}, '${p.key}', this.value)"
+          />
+        </div>
+      `).join('');
+
+      return `
+        <div class="selected-item">
+          <div class="selected-item-header">
+            <span class="num">${idx + 1}</span>
+            <span class="label">${meta.label}</span>
+            <button class="del-btn" onclick="removeStep(${s.id})" title="Eliminar">&#10005;</button>
+          </div>
+          ${paramsHtml}
+        </div>
+      `;
+    }).join('');
+  }
+
+  function updateParam(id, key, val) {
+    const s = steps.find(s => s.id === id);
+    if (s) s.params[key] = val;
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  async function generate() {
+    if (steps.length === 0) {
+      setStatus('Agrega al menos un paso antes de generar.', 'err');
+      return;
+    }
+    const nombre = document.getElementById('script-name').value.trim() || 'mi_configuracion';
+    const btn = document.getElementById('gen-btn');
+    btn.disabled = true;
+    setStatus('Generando script...', '');
+
+    const payload = {
+      nombre,
+      steps: steps.map(s => ({ type: s.type, params: s.params }))
+    };
+
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Error desconocido' }));
+        throw new Error(err.error || res.statusText);
+      }
+
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = nombre.replace(/\s+/g, '_') + '.bat';
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus('✓ Archivo descargado: ' + a.download, 'ok');
+    } catch (e) {
+      setStatus('✗ Error: ' + e.message, 'err');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function setStatus(msg, cls) {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className   = cls;
+  }
+</script>
+</body>
+</html>

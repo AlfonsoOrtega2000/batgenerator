@@ -4,7 +4,7 @@
 # ================================================
 
 # Actualiza esta URL despues de desplegar en Vercel
-$API_URL = "https://TU-PROYECTO.vercel.app/api/generate"
+$API_URL = "https://batgenerator.vercel.app/api/generate"
 
 $pasos = [System.Collections.ArrayList]@()
 
