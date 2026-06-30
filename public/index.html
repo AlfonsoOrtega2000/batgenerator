@@ -228,8 +228,9 @@
 <body>
 
 <header>
-  <h1>&#9881; Generador de Scripts .BAT</h1>
+  <h1>&#9881; Optimizalo &mdash; Scripts .BAT</h1>
   <p>Selecciona pasos, configura los par&aacute;metros y descarga tu script listo para ejecutar en Windows.</p>
+  <button onclick="logout()" style="margin-top:10px;background:none;border:1px solid #2d3148;border-radius:6px;color:#64748b;font-size:0.78rem;padding:4px 12px;cursor:pointer;">Cerrar sesi&oacute;n</button>
 </header>
 
 <div class="layout">
@@ -339,6 +340,15 @@
     },
   };
 
+  // ── Auth ────────────────────────────────────────────────────
+  const _token = localStorage.getItem('opt_token');
+  if (!_token) window.location.replace('/login.html');
+
+  function logout() {
+    localStorage.removeItem('opt_token');
+    window.location.replace('/login.html');
+  }
+
   let steps = [];   // [{type, id, params:{}}]
   let nextId = 0;
 
@@ -415,7 +425,10 @@
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Auth-Token': _token,
+        },
         body: JSON.stringify(payload)
       });
 

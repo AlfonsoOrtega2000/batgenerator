@@ -1,5 +1,7 @@
-from http.server import BaseHTTPRequestHandler
-import json
+import json, sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from _auth import VALID_TOKENS
+from _base import BaseHandler
 
 
 def build_bat(nombre, steps):
@@ -110,6 +112,57 @@ def build_bat(nombre, steps):
                 f'echo   OK',
             ]
 
+        elif kind == "descargar_nubeprint":
+            url = "https://zero.nubeprint.com/download/cpms/Nubeprint%20CPM.msi"
+            lines += [
+                "",
+                ":: [PASO] Descargar e instalar NubePrint CPM",
+                'echo.',
+                'echo [1/2] Descargando NubePrint CPM...',
+                f'powershell -Command "Invoke-WebRequest -Uri \'{url}\' -OutFile \'%USERPROFILE%\\Desktop\\Nubeprint CPM.msi\'"',
+                'if %errorlevel% neq 0 (',
+                '    echo  ERROR: No se pudo descargar el instalador.',
+                '    pause & exit /b 1',
+                ')',
+                'echo.',
+                'echo [2/2] Ejecutando instalador...',
+                'msiexec /i "%USERPROFILE%\\Desktop\\Nubeprint CPM.msi"',
+                'echo.',
+                'echo  OK - NubePrint CPM instalado.',
+            ]
+
+        elif kind == "instalar_nubeprint":
+            proyecto = p.get("nombre_proyecto", "Mi Proyecto")
+            url = "https://zero.nubeprint.com/download/cpms/Nubeprint%20CPM.msi"
+            lines += [
+                "",
+                f":: [PASO] Instalar NubePrint – Proyecto: {proyecto}",
+                f'echo.',
+                f'echo  Proyecto: {proyecto}',
+                f'echo.',
+                f'echo [1/2] Descargando NubePrint CPM...',
+                f'powershell -Command "Invoke-WebRequest -Uri \'{url}\' -OutFile \'%USERPROFILE%\\Desktop\\Nubeprint_CPM.msi\'"',
+                f'if %errorlevel% neq 0 (',
+                f'    echo  ERROR: No se pudo descargar el instalador.',
+                f'    pause & exit /b 1',
+                f')',
+                f'echo [2/2] Instalando NubePrint CPM...',
+                f'msiexec /i "%USERPROFILE%\\Desktop\\Nubeprint_CPM.msi" /qn',
+                f'if %errorlevel% neq 0 (',
+                f'    echo  ERROR: La instalacion fallo.',
+                f'    pause & exit /b 1',
+                f')',
+                f'echo.',
+                f'echo ================================================',
+                f'echo  NubePrint CPM instalado correctamente.',
+                f'echo  Proyecto: {proyecto}',
+                f'echo.',
+                f'echo  Abre NubePrint e introduce la licencia desde',
+                f'echo  el portal web de NubePrint.',
+                f'echo ================================================',
+                f'echo.',
+            ]
+
     lines += [
         "",
         "echo.",
@@ -123,26 +176,9 @@ def build_bat(nombre, steps):
     return "\r\n".join(lines)
 
 
-class handler(BaseHTTPRequestHandler):
-    def log_message(self, format, *args):
-        pass
-
-    def _cors(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS, GET")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self._cors()
-        self.end_headers()
-
+class handler(BaseHandler):
     def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self._cors()
-        self.end_headers()
-        payload = {
+        self._json(200, {
             "status": "ok",
             "version": "1.0",
             "pasos": [
@@ -153,48 +189,38 @@ class handler(BaseHTTPRequestHandler):
                 "copiar_archivos",
                 "ejecutar_comando",
             ],
-        }
-        self.wfile.write(json.dumps(payload).encode())
+        })
 
     def do_POST(self):
+        tok = self.headers.get("X-Auth-Token", "")
+        if tok not in VALID_TOKENS:
+            self._error(401, "No autorizado")
+            return
+
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length)
 
         try:
             data = json.loads(body)
         except json.JSONDecodeError:
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json")
-            self._cors()
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "JSON invalido"}).encode())
+            self._error(400, "JSON invalido")
             return
 
         steps = data.get("steps", [])
         nombre = data.get("nombre", "configuracion").strip() or "configuracion"
 
         if not steps:
-            self.send_response(400)
-            self.send_header("Content-Type", "application/json")
-            self._cors()
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": "No hay pasos seleccionados"}).encode())
+            self._error(400, "No hay pasos seleccionados")
             return
 
         try:
             bat = build_bat(nombre, steps)
             filename = nombre.replace(" ", "_") + ".bat"
-
             self.send_response(200)
             self.send_header("Content-Type", "application/octet-stream")
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
             self._cors()
             self.end_headers()
             self.wfile.write(bat.encode("utf-8"))
-
         except Exception as e:
-            self.send_response(500)
-            self.send_header("Content-Type", "application/json")
-            self._cors()
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": str(e)}).encode())
+            self._error(500, str(e))

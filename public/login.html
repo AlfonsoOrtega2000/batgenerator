@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Acceso — Optimizalo</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .card {
+      background: #1e2130;
+      border: 1px solid #2d3148;
+      border-radius: 14px;
+      padding: 36px 32px;
+      width: 100%;
+      max-width: 380px;
+    }
+
+    .logo {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .logo h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #60a5fa;
+    }
+    .logo p {
+      font-size: 0.8rem;
+      color: #64748b;
+      margin-top: 4px;
+    }
+
+    .field { margin-bottom: 16px; }
+    .field label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #94a3b8;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .field input {
+      width: 100%;
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 0.95rem;
+      padding: 10px 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .field input:focus { border-color: #60a5fa; }
+
+    button[type="submit"] {
+      width: 100%;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 11px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background 0.15s;
+    }
+    button[type="submit"]:hover  { background: #1d4ed8; }
+    button[type="submit"]:disabled { background: #334155; color: #64748b; cursor: default; }
+
+    #err {
+      margin-top: 14px;
+      text-align: center;
+      font-size: 0.85rem;
+      color: #f87171;
+      min-height: 18px;
+    }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <h1>&#9881; Optimizalo</h1>
+    <p>Generador de Scripts .BAT</p>
+  </div>
+
+  <form id="form" onsubmit="login(event)">
+    <div class="field">
+      <label>Usuario</label>
+      <input id="user" type="text" autocomplete="username" placeholder="admin" required />
+    </div>
+    <div class="field">
+      <label>Contraseña</label>
+      <input id="pass" type="password" autocomplete="current-password" placeholder="••••••••" required />
+    </div>
+    <button type="submit" id="btn">Entrar</button>
+  </form>
+  <div id="err"></div>
+</div>
+
+<script>
+  if (localStorage.getItem('opt_token')) {
+    window.location.replace('/');
+  }
+
+  async function login(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn');
+    const err = document.getElementById('err');
+    btn.disabled = true;
+    err.textContent = '';
+
+    try {
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('user').value,
+          password: document.getElementById('pass').value,
+        })
+      });
+
+      if (res.ok) {
+        const { token } = await res.json();
+        localStorage.setItem('opt_token', token);
+        window.location.replace('/');
+      } else {
+        const { error } = await res.json().catch(() => ({ error: 'Error desconocido' }));
+        err.textContent = error;
+        btn.disabled = false;
+      }
+    } catch {
+      err.textContent = 'No se pudo conectar con el servidor.';
+      btn.disabled = false;
+    }
+  }
+</script>
+</body>
+</html>

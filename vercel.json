@@ -6,6 +6,14 @@
       "use": "@vercel/python"
     },
     {
+      "src": "api/auth.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "api/menu.py",
+      "use": "@vercel/python"
+    },
+    {
       "src": "public/**",
       "use": "@vercel/static"
     }
@@ -14,6 +22,22 @@
     {
       "src": "/api/generate",
       "dest": "/api/generate.py"
+    },
+    {
+      "src": "/api/auth",
+      "dest": "/api/auth.py"
+    },
+    {
+      "src": "/m",
+      "dest": "/api/menu.py"
+    },
+    {
+      "src": "/",
+      "dest": "/public/index.html"
+    },
+    {
+      "src": "/login",
+      "dest": "/public/login.html"
     },
     {
       "src": "/(.*)",
