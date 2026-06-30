@@ -1,5 +1,7 @@
 # HANDOFF — tooloptimizalo.xyz / batgenerator
 
+> **Última actualización automática:** 2026-06-30 23:05
+
 ## Qué es este proyecto
 
 Herramienta para técnicos IT de Optimizalo. Sirve un menú TUI interactivo vía PowerShell
