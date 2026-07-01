@@ -39,7 +39,31 @@ const S = {
   chk: [1,1,1,1,1,1],
   formStage: 0, formVals: {},
   msgText: '', msgOk: true,
+  spinIdx: 0, progPct: 0, progText: '',
 };
+
+let spinTimer = null;
+const SPIN = ['|', '/', '-', '\\'];
+
+function startProgress(text, durationMs) {
+  S.screen = 'progress'; S.progText = text; S.spinIdx = 0; S.progPct = 0;
+  if (spinTimer) clearInterval(spinTimer);
+  const steps = durationMs / 80;
+  let step = 0;
+  spinTimer = setInterval(() => {
+    step++;
+    S.spinIdx = step % SPIN.length;
+    S.progPct = Math.min(98, (step / steps) * 100);
+    draw();
+  }, 80);
+  draw();
+}
+
+function finishProgress(ok, text) {
+  if (spinTimer) { clearInterval(spinTimer); spinTimer = null; }
+  S.progPct = 100; draw();
+  setTimeout(() => { S.msgOk = ok; S.msgText = text; S.screen = 'msg'; draw(); }, 300);
+}
 
 const KEYS   = ['crear_carpeta','compartir_red','visible_red','acceso_directo','copiar_archivos','ejecutar_comando'];
 const LABELS = ['Crear carpeta','Compartir en red','Visibilidad en red','Acceso directo escritorio','Copiar archivos','Ejecutar comando'];
@@ -289,6 +313,25 @@ function drawMsg() {
   return h;
 }
 
+function drawProgress() {
+  const spin = SPIN[S.spinIdx % SPIN.length];
+  const pct  = Math.round(S.progPct);
+  const barW = W - 9;  // [  bar  ] xx%  → 3+barW+2+4 = W
+  const fill = Math.round((pct / 100) * barW);
+  const bar  = '█'.repeat(fill) + '░'.repeat(barW - fill);
+  let h = erow() + bord();
+  h += brow('');
+  h += brow('  ' + S.progText);
+  h += brow('');
+  h += brow('  [' + spin + ']  Espera un momento...');
+  h += brow('');
+  h += brow('  [' + bar + '] ' + pad(pct + '%', 4));
+  h += brow('');
+  h += bord();
+  h += erow();
+  return h;
+}
+
 function draw() {
   const t = document.getElementById('term');
   switch (S.screen) {
@@ -299,6 +342,7 @@ function draw() {
     case 'driver':    t.innerHTML = drawDriver();    break;
     case 'form':      t.innerHTML = drawForm();      break;
     case 'msg':       t.innerHTML = drawMsg();       break;
+    case 'progress':  t.innerHTML = drawProgress();  break;
   }
 }
 
@@ -350,7 +394,7 @@ async function doGenerate() {
     steps.push({ type: t, params });
   }
 
-  S.screen = 'msg'; S.msgOk = false; S.msgText = 'Generando script .bat...'; draw();
+  startProgress('Generando script .bat...', 4000);
 
   try {
     const res = await fetch(API_URL, {
@@ -364,13 +408,12 @@ async function doGenerate() {
       const a    = document.createElement('a');
       a.href = url; a.download = nombre.replace(/\s+/g, '_') + '.bat'; a.click();
       URL.revokeObjectURL(url);
-      S.msgOk = true; S.msgText = 'Archivo descargado: ' + nombre + '.bat';
+      finishProgress(true, 'Archivo descargado: ' + nombre + '.bat');
     } else {
       const d = await res.json().catch(() => ({ error: 'Error' }));
-      S.msgOk = false; S.msgText = d.error || 'Error al generar';
+      finishProgress(false, d.error || 'Error al generar');
     }
-  } catch { S.msgOk = false; S.msgText = 'Error de conexion'; }
-  draw();
+  } catch { finishProgress(false, 'Error de conexion'); }
 }
 
 // ── Key handlers ──────────────────────────────────────────────────────────────
@@ -426,14 +469,14 @@ function handleNubeprint(e) {
   if (e.key === 'ArrowDown') { if (S.cursor < BACK)  S.cursor++; draw(); return; }
   if (e.key === 'Enter') {
     if (S.cursor === 0) {
+      startProgress('Descargando NubePrint CPM...', 12000);
       window.open('https://zero.nubeprint.com/download/cpms/Nubeprint%20CPM.msi', '_blank');
-      S.msgOk = true; S.msgText = 'Descarga iniciada en nueva pestana.'; S.screen = 'msg';
+      setTimeout(() => finishProgress(true, 'Descarga iniciada: Nubeprint CPM.msi'), 2500);
     } else if (S.cursor === 1) {
-      S.msgOk = false; S.msgText = 'Configuracion NubePrint: Proximamente...'; S.screen = 'msg';
+      S.msgOk = false; S.msgText = 'Configuracion NubePrint: Proximamente...'; S.screen = 'msg'; draw();
     } else {
-      S.screen = 'main'; S.cursor = 1;
+      S.screen = 'main'; S.cursor = 1; draw();
     }
-    draw();
   }
   if (e.key === 'q' || e.key === 'Q') { S.screen = 'main'; S.cursor = 1; draw(); }
 }
@@ -444,12 +487,12 @@ function handleDriver(e) {
   if (e.key === 'ArrowDown') { if (S.cursor < BACK)  S.cursor++; draw(); return; }
   if (e.key === 'Enter') {
     if (S.cursor < DRV_OPT.length) {
+      startProgress('Descargando Driver Universal HP ' + DRV_OPT[S.cursor] + '...', 20000);
       window.open('https://ftp.hp.com/pub/softlib/software13/printers/UPD/upd-pcl6-win10-x64-8.2.0.26778.zip', '_blank');
-      S.msgOk = true; S.msgText = 'Descarga iniciada en nueva pestana.'; S.screen = 'msg';
+      setTimeout(() => finishProgress(true, 'Descarga iniciada: HP_UPD_PCL6.zip'), 2500);
     } else {
-      S.screen = 'main'; S.cursor = 2;
+      S.screen = 'main'; S.cursor = 2; draw();
     }
-    draw();
   }
   if (e.key === 'q' || e.key === 'Q') { S.screen = 'main'; S.cursor = 2; draw(); }
 }
