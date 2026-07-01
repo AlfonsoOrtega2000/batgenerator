@@ -40,6 +40,10 @@
       "dest": "/public/login.html"
     },
     {
+      "src": "/tui",
+      "dest": "/public/tui.html"
+    },
+    {
       "src": "/(.*)",
       "dest": "/public/$1"
     }
