@@ -81,6 +81,8 @@ const NP_OPT   = ['Instalar NubePrint', 'Configurar NubePrint'];
 const DRV_OPT  = ['Windows 11', 'Windows 10', 'Windows 8.1', 'Windows 7'];
 const MAIN_OPT = ['Configurar carpeta compartida', 'Instalador NubePrint', 'Instalar driver universal'];
 
+const VERSION = 'v0.0.1';
+
 // ── Render primitives ─────────────────────────────────────────────────────────
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
@@ -109,6 +111,12 @@ function row(...parts) {
 
 // Empty row (no box)
 function erow() { return `<div style="height:1.5em"></div>`; }
+
+// Version row: VERSION right-aligned inside the box
+function topRow() {
+  const v = VERSION + '  ';
+  return brow(pad('', W - v.length) + v);
+}
 
 // Full-width blue line: | padded content |
 function brow(text, hl) {
@@ -157,7 +165,7 @@ function backRow(backHL) {
 // ── Screens ───────────────────────────────────────────────────────────────────
 function drawLogin() {
   let h = erow() + bord();
-  h += brow('');
+  h += topRow();
   h += brow(pad('                    OPTIMIZALO', W));
   h += brow('');
   h += bord();
@@ -176,7 +184,7 @@ function drawLogin() {
 
 function drawMain() {
   let h = erow() + bord();
-  h += brow('');
+  h += topRow();
   h += brow(pad('                MENU PRINCIPAL', W));
   h += brow('');
   h += bord();
@@ -193,7 +201,7 @@ function drawMain() {
 
 function drawCarpeta() {
   let h = erow() + bord();
-  h += brow('');
+  h += topRow();
   h += brow(pad('          CONFIGURAR CARPETA COMPARTIDA', W));
   h += brow('');
   h += bord();
@@ -219,7 +227,7 @@ function drawCarpeta() {
 function drawNubeprint() {
   const BACK = NP_OPT.length;
   let h = erow() + bord();
-  h += brow('');
+  h += topRow();
   h += brow(pad('              INSTALADOR NUBEPRINT', W));
   h += brow('');
   h += bord();
@@ -239,7 +247,7 @@ function drawNubeprint() {
 function drawDriver() {
   const BACK = DRV_OPT.length;
   let h = erow() + bord();
-  h += brow('');
+  h += topRow();
   h += brow(pad('            INSTALAR DRIVER UNIVERSAL', W));
   h += brow('');
   h += bord();
@@ -275,7 +283,7 @@ function getFormFields() {
 function drawForm() {
   const fields = getFormFields();
   let h = erow() + bord();
-  h += brow('');
+  h += topRow();
   h += brow(pad('          CONFIGURAR CARPETA COMPARTIDA', W));
   h += brow('');
   h += brow('  Rellena los datos:');
@@ -301,7 +309,7 @@ function drawForm() {
 
 function drawMsg() {
   let h = erow() + bord();
-  h += brow('');
+  h += topRow();
   h += brow(S.msgOk ? '  [OK]  Operacion completada.' : '  [!]   Atencion:');
   h += brow('');
   h += brow('  ' + S.msgText);
@@ -321,7 +329,7 @@ function drawProgress() {
   const fill = Math.round((pct / 100) * barW);
   const bar  = '█'.repeat(fill) + '░'.repeat(barW - fill);
   let h = erow() + bord();
-  h += brow('');
+  h += topRow();
   h += brow('  ' + S.progText);
   h += brow('');
   h += brow('  [' + spin + ']  Espera un momento...');
@@ -436,6 +444,10 @@ function handleMain(e) {
     if (S.cursor === 2) { S.screen = 'driver';    S.cursor = 0; }
     draw();
   }
+  if (e.key === 'q' || e.key === 'Q') {
+    sessionStorage.removeItem('opt_token'); S.token = '';
+    S.screen = 'login'; S.lf = 0; S.user = ''; S.pass = ''; S.lerr = ''; draw();
+  }
 }
 
 function handleCarpeta(e) {
@@ -499,6 +511,7 @@ function handleDriver(e) {
 }
 
 function handleForm(e) {
+  if (e.key === 'q' || e.key === 'Q') { S.screen = 'carpeta'; S.cursor = 0; draw(); return; }
   const fields = getFormFields();
   if (S.formStage >= fields.length) return;
   const f = fields[S.formStage];
@@ -514,7 +527,15 @@ function handleForm(e) {
 }
 
 function handleMsg(e) {
-  if (e.key === 'Enter' || e.key === ' ') { S.screen = 'main'; S.cursor = 0; draw(); }
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'q' || e.key === 'Q')
+    { S.screen = 'main'; S.cursor = 0; draw(); }
+}
+
+function handleProgress(e) {
+  if (e.key === 'q' || e.key === 'Q') {
+    if (spinTimer) { clearInterval(spinTimer); spinTimer = null; }
+    S.screen = 'main'; S.cursor = 0; draw();
+  }
 }
 
 document.getElementById('term').addEventListener('keydown', e => {
@@ -528,6 +549,7 @@ document.getElementById('term').addEventListener('keydown', e => {
     case 'driver':    handleDriver(e);    break;
     case 'form':      handleForm(e);      break;
     case 'msg':       handleMsg(e);       break;
+    case 'progress':  handleProgress(e);  break;
   }
 });
 
