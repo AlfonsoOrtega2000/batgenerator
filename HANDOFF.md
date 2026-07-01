@@ -15,10 +15,11 @@ HP, generando scripts `.bat` listos para ejecutar en Windows.
 | Recurso | URL |
 |---|---|
 | Producción web | https://tooloptimizalo.xyz |
+| **Menú TUI web** | **https://tooloptimizalo.xyz/tui** |
 | Menú PowerShell | `pwsh -c "iex(irm tooloptimizalo.xyz/m)"` |
 | API generate | `POST https://tooloptimizalo.xyz/api/generate` |
 | API auth | `POST https://tooloptimizalo.xyz/api/auth` |
-| Panel web | `GET https://tooloptimizalo.xyz/` (requiere login) |
+| Panel web (generador) | `GET https://tooloptimizalo.xyz/` (requiere login) |
 
 **Credenciales de acceso:**
 - Usuario: `admin`
@@ -43,7 +44,8 @@ batgenerator/
 │   └── menu.py          # Endpoint GET /m — sirve el PS1 comprimido/ofuscado
 └── public/
     ├── index.html       # Web UI del generador (requiere token en localStorage)
-    └── login.html       # Página de login web
+    ├── login.html       # Página de login web
+    └── tui.html         # Menú TUI web — réplica visual del CMD (tooloptimizalo.xyz/tui)
 ```
 
 ---
@@ -113,15 +115,15 @@ La opción "EJECUTAR AHORA" llama a `cmd.exe` y `powershell.exe`, por lo que sol
 - Driver Universal: las 4 opciones de Windows (7/8.1/10/11) descargan **el mismo ZIP** (`upd-pcl6-win10-x64-8.2.0.26778.zip`). Falta URLs específicas por versión.
 - NubePrint "Configurar NubePrint" muestra solo "Próximamente..." — no implementado.
 
-### Refactorización pendiente (estábamos en esto)
-- **CORS duplicado**: el método `_cors()` y el patrón de cabeceras de error se repiten
-  en `auth.py`, `generate.py` y `menu.py`. Se puede extraer a un helper compartido.
-- **Navegación PowerShell duplicada**: `Run-Carpeta`, `Run-NubePrint` y `Run-Driver`
-  en `menu.ps1` tienen la misma lógica de teclas (38/40/37/39/13/32). Se puede extraer
-  a una función `Run-Menu` genérica.
-- **Navegación Bash duplicada**: igual en `menu.sh` — `run_nubeprint` y `run_driver`
-  repiten el mismo bucle de teclas. Candidato a función genérica `run_submenu`.
+### Refactorización completada en sesión anterior
+- **CORS duplicado** → extraído a `api/_base.py` (`BaseHandler`) ✓
+- **Navegación PowerShell duplicada** → `Run-SimpleMenu` genérico en `menu.ps1` ✓
+- **Navegación Bash duplicada** → `run_simple_menu` genérico en `menu.sh` ✓
+
+### Pendiente
 - **BAT generation verboso**: cada `elif kind ==` en `generate.py` es largo y repetitivo.
+- Driver Universal: las 4 opciones descargan el mismo ZIP. Falta URLs por versión.
+- NubePrint "Configurar" muestra solo "Próximamente...".
 
 ---
 
@@ -153,8 +155,12 @@ curl -X POST http://localhost:3000/api/generate \
 
 ---
 
-## Historial de estado (última sesión)
+## Historial de estado (última sesión — 2026-07-01)
 
-Estábamos en la **optimización general del código**. Los cambios no llegaron a aplicarse
-porque la sesión se cortó. Las áreas pendientes están detalladas en la sección
-"Refactorización pendiente" arriba.
+Se creó `public/tui.html`: menú TUI web que replica visualmente el CMD.
+- Accesible en `tooloptimizalo.xyz/tui` sin instalar nada, desde cualquier equipo
+- Navegación completa con flechas + Enter + Espacio + Q
+- Login con sesión en `sessionStorage` (se cierra al cerrar la pestaña)
+- Carpeta compartida con checkboxes y generación de .bat con barra de progreso animada
+- NubePrint y Driver Universal con animación de carga
+- Ruta `/tui` añadida en `vercel.json`
