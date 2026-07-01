@@ -118,57 +118,58 @@ function topRow() {
   return brow(pad('', W - v.length) + v);
 }
 
-// Full-width blue line: | padded content |
+// Full-width blue line: │ padded content │
 function brow(text, hl) {
   const c = pad(text || '', W);
-  if (hl) return row(bs('|', 1), hs(c, W), bs('|', 1));
-  return row(bs('|' + c + '|', W + 2));
+  if (hl) return row(bs('│', 1), hs(c, W), bs('│', 1));
+  return row(bs('│' + c + '│', W + 2));
 }
 
-// Border: +----+
-function bord() { return row(bs('+' + '-'.repeat(W) + '+', W + 2)); }
+// Border: ┌─┐ top  ├─┤ mid  └─┘ bot
+function bord(t) {
+  const L = t==='top'?'┌':t==='bot'?'└':'├';
+  const R = t==='top'?'┐':t==='bot'?'┘':'┤';
+  return row(bs(L+'─'.repeat(W)+R, W+2));
+}
 
 // ── Carpeta button rows ───────────────────────────────────────────────────────
-// | 2sp [b1=26] 4sp [b2=18] 4sp |   total content = 3+26+4+18+5 = 56 = W+2
 function btnRow(b1HL, b2HL) {
   const b1 = '[ CREAR Y DESCARGAR .BAT ]';
   const b2 = '[ VOLVER AL MENU ]';
   return row(
-    bs('|  ', 3),
+    bs('│  ', 3),
     (b1HL ? hs : bs)(b1, 26),
     bs('    ', 4),
     (b2HL ? hs : bs)(b2, 18),
-    bs('    |', 5)
+    bs('    │', 5)
   );
 }
 
-// | 18sp [b3=18] 18sp |   total = 19+18+19 = 56 = W+2
 function execRow(execHL) {
   const b3 = '[ EJECUTAR AHORA ]';
   return row(
-    bs('|' + ' '.repeat(18), 19),
+    bs('│' + ' '.repeat(18), 19),
     (execHL ? hs : bs)(b3, 18),
-    bs(' '.repeat(18) + '|', 19)
+    bs(' '.repeat(18) + '│', 19)
   );
 }
 
-// | 32sp [bk=18] 4sp |   total = 33+18+5 = 56 = W+2
 function backRow(backHL) {
   const bk = '[ VOLVER AL MENU ]';
   return row(
-    bs('|' + ' '.repeat(32), 33),
+    bs('│' + ' '.repeat(32), 33),
     (backHL ? hs : bs)(bk, 18),
-    bs('    |', 5)
+    bs('    │', 5)
   );
 }
 
 // ── Screens ───────────────────────────────────────────────────────────────────
 function drawLogin() {
-  let h = erow() + bord();
+  let h = erow() + bord('top');
   h += topRow();
   h += brow(pad('                    OPTIMIZALO', W));
   h += brow('');
-  h += bord();
+  h += bord('mid');
   h += brow('');
   h += brow('  Introduce tus credenciales:');
   h += brow('');
@@ -177,89 +178,89 @@ function drawLogin() {
   h += brow('');
   if (S.lerr)  h += brow('  * ' + S.lerr);
   if (S.lbusy) h += brow('  Iniciando sesion...');
-  h += bord();
+  h += bord('bot');
   h += erow();
   return h;
 }
 
 function drawMain() {
-  let h = erow() + bord();
+  let h = erow() + bord('top');
   h += topRow();
   h += brow(pad('                MENU PRINCIPAL', W));
   h += brow('');
-  h += bord();
+  h += bord('mid');
   h += brow('');
   MAIN_OPT.forEach((o, i) => h += brow((S.cursor === i ? ' >  ' : '     ') + o, S.cursor === i));
   h += brow('');
-  h += bord();
+  h += bord('mid');
   h += brow('  Flechas: mover   Enter: seleccionar   Q: salir');
   h += brow('');
-  h += bord();
+  h += bord('bot');
   h += erow();
   return h;
 }
 
 function drawCarpeta() {
-  let h = erow() + bord();
+  let h = erow() + bord('top');
   h += topRow();
   h += brow(pad('          CONFIGURAR CARPETA COMPARTIDA', W));
   h += brow('');
-  h += bord();
+  h += bord('mid');
   h += brow('');
   for (let i = 0; i < CN; i++) {
     const cb = S.chk[i] ? '[v]' : '[ ]';
     h += brow((S.cursor === i ? ' >  ' : '     ') + cb + '   ' + LABELS[i], S.cursor === i);
   }
   h += brow('');
-  h += bord();
+  h += bord('mid');
   h += brow(S.cursor < CN ? '  ' + DESCS[S.cursor] : '');
-  h += bord();
+  h += bord('mid');
   h += brow('  Flechas: mover   Espacio: marcar   Q: volver');
   h += brow('');
   h += btnRow(S.cursor === BTN, S.cursor === BACK_C);
   h += execRow(S.cursor === EXEC_C);
   h += brow('');
-  h += bord();
+  h += bord('bot');
   h += erow();
   return h;
 }
 
 function drawNubeprint() {
   const BACK = NP_OPT.length;
-  let h = erow() + bord();
+  let h = erow() + bord('top');
   h += topRow();
   h += brow(pad('              INSTALADOR NUBEPRINT', W));
   h += brow('');
-  h += bord();
+  h += bord('mid');
   h += brow('');
   NP_OPT.forEach((o, i) => h += brow((S.cursor === i ? ' >  ' : '     ') + o, S.cursor === i));
   h += brow('');
-  h += bord();
+  h += bord('mid');
   h += brow('  Flechas: mover   Enter: seleccionar   Q: volver');
   h += brow('');
   h += backRow(S.cursor === BACK);
   h += brow('');
-  h += bord();
+  h += bord('bot');
   h += erow();
   return h;
 }
 
 function drawDriver() {
   const BACK = DRV_OPT.length;
-  let h = erow() + bord();
+  let h = erow() + bord('top');
   h += topRow();
   h += brow(pad('            INSTALAR DRIVER UNIVERSAL', W));
   h += brow('');
-  h += bord();
+  h += bord('mid');
   h += brow('');
   DRV_OPT.forEach((o, i) => h += brow((S.cursor === i ? ' >  ' : '     ') + o, S.cursor === i));
   h += brow('');
-  h += bord();
+  h += bord('mid');
   h += brow('  Flechas: mover   Enter: seleccionar   Q: volver');
   h += brow('');
   h += backRow(S.cursor === BACK);
   h += brow('');
-  h += bord();
+  h += bord('bot');
   h += erow();
   return h;
 }
