@@ -34,7 +34,7 @@ const AUTH_URL = '/api/auth';
 const S = {
   screen: 'login',
   cursor: 0,
-  token:  localStorage.getItem('opt_token') || '',
+  token:  sessionStorage.getItem('opt_token') || '',
   lf: 0, user: '', pass: '', lerr: '', lbusy: false,
   chk: [1,1,1,1,1,1],
   formStage: 0, formVals: {},
@@ -315,7 +315,7 @@ async function doLogin() {
     const d = await r.json();
     if (r.ok) {
       S.token = d.token;
-      localStorage.setItem('opt_token', S.token);
+      sessionStorage.setItem('opt_token', S.token);
       S.screen = 'main'; S.cursor = 0;
     } else {
       S.lerr = d.error || 'Credenciales incorrectas';
