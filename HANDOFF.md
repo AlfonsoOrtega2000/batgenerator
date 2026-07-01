@@ -164,3 +164,5 @@ Se creó `public/tui.html`: menú TUI web que replica visualmente el CMD.
 - Carpeta compartida con checkboxes y generación de .bat con barra de progreso animada
 - NubePrint y Driver Universal con animación de carga
 - Ruta `/tui` añadida en `vercel.json`
+- Bordes del marco renderizados con `border` CSS (no caracteres Unicode) → líneas continuas garantizadas en todos los lados
+- Versión actualizada a v0.1.1 (10 cambios acumulados desde v0.0.1)
