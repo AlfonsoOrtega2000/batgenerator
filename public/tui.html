@@ -16,22 +16,18 @@ body {
   font-size: 15px;
   overflow-x: auto;
 }
-#term {
-  outline: none;
-  cursor: default;
-  user-select: none;
-  line-height: 1.35;
-}
-.b { background: #0037DA; color: #fff; }
-.h { background: #3B78FF; color: #fff; font-weight: bold; }
-.e { color: #FF5555; }
-@media (max-width: 600px) { #term { font-size: 11px; } }
+#term { display: flex; flex-direction: column; outline: none; cursor: default; user-select: none; }
+.row  { display: flex; align-items: stretch; flex-shrink: 0; }
+.b    { background: #0037DA; color: #fff; white-space: pre; overflow: hidden; flex-shrink: 0; line-height: 1.5; }
+.h    { background: #3B78FF; color: #fff; font-weight: bold; white-space: pre; overflow: hidden; flex-shrink: 0; line-height: 1.5; }
+@media (max-width: 600px) { body { font-size: 10px; } }
 </style>
 </head>
 <body>
-<pre id="term" tabindex="0"></pre>
+<div id="term" tabindex="0"></div>
 <script>
 const W        = 54;
+const IND      = 2;
 const API_URL  = '/api/generate';
 const AUTH_URL = '/api/auth';
 
@@ -53,24 +49,85 @@ const DESCS  = ['Crea la carpeta en el disco si no existe ya',
                 'Crea un acceso directo a la carpeta en el escritorio',
                 'Copia archivos de una ruta origen a una ruta destino',
                 'Ejecuta un comando personalizado de Windows'];
-const CN = KEYS.length;
-const BTN = CN, BACK_C = CN + 1, EXEC_C = CN + 2;
+const CN     = KEYS.length;
+const BTN    = CN, BACK_C = CN + 1, EXEC_C = CN + 2;
 
 const NP_OPT   = ['Instalar NubePrint', 'Configurar NubePrint'];
 const DRV_OPT  = ['Windows 11', 'Windows 10', 'Windows 8.1', 'Windows 7'];
 const MAIN_OPT = ['Configurar carpeta compartida', 'Instalador NubePrint', 'Instalar driver universal'];
 
-// ── Render helpers ────────────────────────────────────────────────────────────
+// ── Render primitives ─────────────────────────────────────────────────────────
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-function pad(s, n) { s = String(s); return s.length >= n ? s.slice(0, n) : s + ' '.repeat(n - s.length); }
 
-function brow(text, hl) {
-  const inner = esc(pad(text || '', W));
-  if (hl) return `  <span class="b">|</span><span class="h">${inner}</span><span class="b">|</span>\n`;
-  return `  <span class="b">|${inner}|</span>\n`;
+function pad(s, n) {
+  s = String(s);
+  return s.length >= n ? s.slice(0, n) : s + ' '.repeat(n - s.length);
 }
-const bord = () => `  <span class="b">+${'-'.repeat(W)}+</span>\n`;
-const erow = () => `\n`;
+
+// A blue span of exactly n chars width
+function bs(text, n) {
+  return `<span class="b" style="width:${n}ch">${esc(pad(text, n))}</span>`;
+}
+
+// A highlight span of exactly n chars width
+function hs(text, n) {
+  return `<span class="h" style="width:${n}ch">${esc(pad(text, n))}</span>`;
+}
+
+// A transparent indent span
+function ind() { return `<span style="width:${IND}ch"></span>`; }
+
+// Wrap spans in a row div
+function row(...parts) {
+  return `<div class="row">${ind()}${parts.join('')}</div>`;
+}
+
+// Empty row (no box)
+function erow() { return `<div style="height:1.5em"></div>`; }
+
+// Full-width blue line: | padded content |
+function brow(text, hl) {
+  const c = pad(text || '', W);
+  if (hl) return row(bs('|', 1), hs(c, W), bs('|', 1));
+  return row(bs('|' + c + '|', W + 2));
+}
+
+// Border: +----+
+function bord() { return row(bs('+' + '-'.repeat(W) + '+', W + 2)); }
+
+// ── Carpeta button rows ───────────────────────────────────────────────────────
+// | 2sp [b1=26] 4sp [b2=18] 4sp |   total content = 3+26+4+18+5 = 56 = W+2
+function btnRow(b1HL, b2HL) {
+  const b1 = '[ CREAR Y DESCARGAR .BAT ]';
+  const b2 = '[ VOLVER AL MENU ]';
+  return row(
+    bs('|  ', 3),
+    (b1HL ? hs : bs)(b1, 26),
+    bs('    ', 4),
+    (b2HL ? hs : bs)(b2, 18),
+    bs('    |', 5)
+  );
+}
+
+// | 18sp [b3=18] 18sp |   total = 19+18+19 = 56 = W+2
+function execRow(execHL) {
+  const b3 = '[ EJECUTAR AHORA ]';
+  return row(
+    bs('|' + ' '.repeat(18), 19),
+    (execHL ? hs : bs)(b3, 18),
+    bs(' '.repeat(18) + '|', 19)
+  );
+}
+
+// | 32sp [bk=18] 4sp |   total = 33+18+5 = 56 = W+2
+function backRow(backHL) {
+  const bk = '[ VOLVER AL MENU ]';
+  return row(
+    bs('|' + ' '.repeat(32), 33),
+    (backHL ? hs : bs)(bk, 18),
+    bs('    |', 5)
+  );
+}
 
 // ── Screens ───────────────────────────────────────────────────────────────────
 function drawLogin() {
@@ -83,7 +140,7 @@ function drawLogin() {
   h += brow('  Introduce tus credenciales:');
   h += brow('');
   h += brow('  Usuario:    ' + S.user + (S.lf === 0 ? '█' : ''));
-  h += brow('  Contrasena: ' + '*'.repeat(S.pass.length) + (S.lf === 1 ? '█' : ''));
+  h += brow('  Contrasena: ' + '•'.repeat(S.pass.length) + (S.lf === 1 ? '█' : ''));
   h += brow('');
   if (S.lerr)  h += brow('  * ' + S.lerr);
   if (S.lbusy) h += brow('  Iniciando sesion...');
@@ -126,26 +183,8 @@ function drawCarpeta() {
   h += bord();
   h += brow('  Flechas: mover   Espacio: marcar   Q: volver');
   h += brow('');
-
-  // Buttons — widths: b1=26, gap=4, b2=18, trail=4, total=54
-  const b1 = '[ CREAR Y DESCARGAR .BAT ]';
-  const b2 = '[ VOLVER AL MENU ]';
-  if (S.cursor === BTN) {
-    h += `  <span class="b">|  </span><span class="h">${b1}</span><span class="b">    ${b2}    |</span>\n`;
-  } else if (S.cursor === BACK_C) {
-    h += `  <span class="b">|  ${b1}    </span><span class="h">${b2}</span><span class="b">    |</span>\n`;
-  } else {
-    h += brow('  ' + b1 + '    ' + b2 + '    ');
-  }
-
-  // Exec button — 18 spaces each side, b3=18, total=54
-  const b3 = '[ EJECUTAR AHORA ]';
-  if (S.cursor === EXEC_C) {
-    h += `  <span class="b">|                  </span><span class="h">${b3}</span><span class="b">                  |</span>\n`;
-  } else {
-    h += brow('                  ' + b3 + '                  ');
-  }
-
+  h += btnRow(S.cursor === BTN, S.cursor === BACK_C);
+  h += execRow(S.cursor === EXEC_C);
   h += brow('');
   h += bord();
   h += erow();
@@ -165,13 +204,7 @@ function drawNubeprint() {
   h += bord();
   h += brow('  Flechas: mover   Enter: seleccionar   Q: volver');
   h += brow('');
-  // [ VOLVER AL MENU ] right side: 32 spaces + 18 + 4 spaces = 54
-  const bk = '[ VOLVER AL MENU ]';
-  if (S.cursor === BACK) {
-    h += `  <span class="b">|                                </span><span class="h">${bk}</span><span class="b">    |</span>\n`;
-  } else {
-    h += brow('                                ' + bk + '    ');
-  }
+  h += backRow(S.cursor === BACK);
   h += brow('');
   h += bord();
   h += erow();
@@ -191,12 +224,7 @@ function drawDriver() {
   h += bord();
   h += brow('  Flechas: mover   Enter: seleccionar   Q: volver');
   h += brow('');
-  const bk = '[ VOLVER AL MENU ]';
-  if (S.cursor === BACK) {
-    h += `  <span class="b">|                                </span><span class="h">${bk}</span><span class="b">    |</span>\n`;
-  } else {
-    h += brow('                                ' + bk + '    ');
-  }
+  h += backRow(S.cursor === BACK);
   h += brow('');
   h += bord();
   h += erow();
@@ -299,7 +327,7 @@ async function doLogin() {
 
 async function doGenerate() {
   const fields = getFormFields();
-  const vals = {};
+  const vals   = {};
   fields.forEach(f => { vals[f.key] = S.formVals[f.key] || f.def; });
 
   const nombre = vals.nombre;
@@ -333,7 +361,7 @@ async function doGenerate() {
     if (res.ok) {
       const blob = await res.blob();
       const url  = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a    = document.createElement('a');
       a.href = url; a.download = nombre.replace(/\s+/g, '_') + '.bat'; a.click();
       URL.revokeObjectURL(url);
       S.msgOk = true; S.msgText = 'Archivo descargado: ' + nombre + '.bat';
@@ -349,15 +377,15 @@ async function doGenerate() {
 function handleLogin(e) {
   if (S.lbusy) return;
   if (e.key === 'Tab')       { S.lf = 1 - S.lf; draw(); return; }
-  if (e.key === 'Enter')     { if (S.lf === 0) { S.lf = 1; draw(); } else { doLogin(); } return; }
-  if (e.key === 'Backspace') { if (S.lf === 0) S.user = S.user.slice(0, -1); else S.pass = S.pass.slice(0, -1); draw(); return; }
+  if (e.key === 'Enter')     { if (S.lf === 0) { S.lf = 1; draw(); } else doLogin(); return; }
+  if (e.key === 'Backspace') { if (S.lf === 0) S.user = S.user.slice(0,-1); else S.pass = S.pass.slice(0,-1); draw(); return; }
   if (e.key.length === 1)    { if (S.lf === 0) S.user += e.key; else S.pass += e.key; draw(); }
 }
 
 function handleMain(e) {
   const max = MAIN_OPT.length - 1;
-  if (e.key === 'ArrowUp')   { if (S.cursor > 0)   S.cursor--; draw(); return; }
-  if (e.key === 'ArrowDown') { if (S.cursor < max)  S.cursor++; draw(); return; }
+  if (e.key === 'ArrowUp')   { if (S.cursor > 0)  S.cursor--; draw(); return; }
+  if (e.key === 'ArrowDown') { if (S.cursor < max) S.cursor++; draw(); return; }
   if (e.key === 'Enter') {
     if (S.cursor === 0) { S.screen = 'carpeta';   S.cursor = 0; }
     if (S.cursor === 1) { S.screen = 'nubeprint'; S.cursor = 0; }
@@ -368,15 +396,15 @@ function handleMain(e) {
 
 function handleCarpeta(e) {
   if (e.key === 'ArrowUp') {
-    if      (S.cursor === EXEC_C)                    S.cursor = BTN;
-    else if (S.cursor === BTN || S.cursor === BACK_C) S.cursor = CN - 1;
-    else if (S.cursor > 0)                           S.cursor--;
+    if      (S.cursor === EXEC_C)                     S.cursor = BTN;
+    else if (S.cursor === BTN || S.cursor === BACK_C)  S.cursor = CN - 1;
+    else if (S.cursor > 0)                            S.cursor--;
     draw(); return;
   }
   if (e.key === 'ArrowDown') {
-    if      (S.cursor < CN - 1)                      S.cursor++;
-    else if (S.cursor === CN - 1)                    S.cursor = BTN;
-    else if (S.cursor === BTN || S.cursor === BACK_C) S.cursor = EXEC_C;
+    if      (S.cursor < CN - 1)                       S.cursor++;
+    else if (S.cursor === CN - 1)                     S.cursor = BTN;
+    else if (S.cursor === BTN || S.cursor === BACK_C)  S.cursor = EXEC_C;
     draw(); return;
   }
   if (e.key === 'ArrowLeft')  { if (S.cursor === BACK_C) S.cursor = BTN;    draw(); return; }
@@ -386,7 +414,7 @@ function handleCarpeta(e) {
     if (S.cursor === BACK_C) { S.screen = 'main'; S.cursor = 0; draw(); return; }
     if (S.cursor === BTN && S.chk.some(v => v))
       { S.formStage = 0; S.formVals = {}; S.screen = 'form'; draw(); return; }
-    if (S.cursor === EXEC_C && S.chk.some(v => v))
+    if (S.cursor === EXEC_C)
       { S.msgOk = false; S.msgText = 'Solo disponible via PowerShell en Windows.'; S.screen = 'msg'; draw(); return; }
   }
   if (e.key === 'q' || e.key === 'Q') { S.screen = 'main'; S.cursor = 0; draw(); }
@@ -399,11 +427,9 @@ function handleNubeprint(e) {
   if (e.key === 'Enter') {
     if (S.cursor === 0) {
       window.open('https://zero.nubeprint.com/download/cpms/Nubeprint%20CPM.msi', '_blank');
-      S.msgOk = true; S.msgText = 'Descarga iniciada en nueva pestana.';
-      S.screen = 'msg';
+      S.msgOk = true; S.msgText = 'Descarga iniciada en nueva pestana.'; S.screen = 'msg';
     } else if (S.cursor === 1) {
-      S.msgOk = false; S.msgText = 'Configuracion NubePrint: Proximamente...';
-      S.screen = 'msg';
+      S.msgOk = false; S.msgText = 'Configuracion NubePrint: Proximamente...'; S.screen = 'msg';
     } else {
       S.screen = 'main'; S.cursor = 1;
     }
@@ -419,8 +445,7 @@ function handleDriver(e) {
   if (e.key === 'Enter') {
     if (S.cursor < DRV_OPT.length) {
       window.open('https://ftp.hp.com/pub/softlib/software13/printers/UPD/upd-pcl6-win10-x64-8.2.0.26778.zip', '_blank');
-      S.msgOk = true; S.msgText = 'Descarga iniciada en nueva pestana.';
-      S.screen = 'msg';
+      S.msgOk = true; S.msgText = 'Descarga iniciada en nueva pestana.'; S.screen = 'msg';
     } else {
       S.screen = 'main'; S.cursor = 2;
     }
@@ -440,7 +465,7 @@ function handleForm(e) {
     else draw();
     return;
   }
-  if (e.key === 'Backspace') { S.formVals[f.key] = (S.formVals[f.key] || '').slice(0, -1); draw(); return; }
+  if (e.key === 'Backspace') { S.formVals[f.key] = (S.formVals[f.key] || '').slice(0,-1); draw(); return; }
   if (e.key.length === 1)    { S.formVals[f.key] = (S.formVals[f.key] || '') + e.key; draw(); }
 }
 
@@ -448,7 +473,6 @@ function handleMsg(e) {
   if (e.key === 'Enter' || e.key === ' ') { S.screen = 'main'; S.cursor = 0; draw(); }
 }
 
-// ── Global keydown ────────────────────────────────────────────────────────────
 document.getElementById('term').addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   e.preventDefault();
@@ -463,7 +487,6 @@ document.getElementById('term').addEventListener('keydown', e => {
   }
 });
 
-// ── Init ──────────────────────────────────────────────────────────────────────
 if (S.token) S.screen = 'main';
 draw();
 document.getElementById('term').focus();
