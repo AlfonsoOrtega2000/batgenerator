@@ -17,533 +17,613 @@ body {
   font-size: 15px;
   overflow-x: auto;
 }
-#term { display: flex; flex-direction: column; outline: none; cursor: default; user-select: none; }
-.row  { display: flex; align-items: stretch; flex-shrink: 0; }
-.b    { background: #0037DA; color: #fff; white-space: pre; overflow: hidden; flex-shrink: 0; line-height: 1.5; }
-.h    { background: #3B78FF; color: #fff; font-weight: bold; white-space: pre; overflow: hidden; flex-shrink: 0; line-height: 1.5; }
-.box  { display: flex; flex-direction: column; border: 1px solid rgba(200,225,255,0.85); }
+#terminal { display: flex; flex-direction: column; outline: none; cursor: default; user-select: none; }
+.row      { display: flex; align-items: stretch; flex-shrink: 0; }
+.blue     { background: #0037DA; color: #fff; white-space: pre; overflow: hidden; flex-shrink: 0; line-height: 1.5; }
+.selected { background: #3B78FF; color: #fff; font-weight: bold; white-space: pre; overflow: hidden; flex-shrink: 0; line-height: 1.5; }
+.box      { display: flex; flex-direction: column; border: 1px solid rgba(200,225,255,0.85); }
 @media (max-width: 600px) { body { font-size: 10px; } }
 </style>
 </head>
 <body>
-<div id="term" tabindex="0"></div>
+<div id="terminal" tabindex="0"></div>
 <script>
-const W        = 54;
-const IND      = 2;  // kept for reference; box uses margin-left via CSS .box
-const API_URL  = '/api/generate';
-const AUTH_URL = '/api/auth';
+// ── Constants ─────────────────────────────────────────────────────────────────
+const BOX_WIDTH = 54;
+const API_URL   = '/api/generate';
+const AUTH_URL  = '/api/auth';
+const VERSION   = 'v0.1.2';
+const SPINNER   = ['|', '/', '-', '\\'];
 
-const S = {
-  screen: 'login',
-  cursor: 0,
-  token:  sessionStorage.getItem('opt_token') || '',
-  lf: 0, user: '', pass: '', lerr: '', lbusy: false,
-  chk: [1,1,1,1,1,1],
-  formStage: 0, formVals: {},
-  msgText: '', msgOk: true,
-  spinIdx: 0, progPct: 0, progText: '',
+const STEP_KEYS   = ['crear_carpeta','compartir_red','visible_red','acceso_directo','copiar_archivos','ejecutar_comando'];
+const STEP_LABELS = ['Crear carpeta','Compartir en red','Visibilidad en red','Acceso directo escritorio','Copiar archivos','Ejecutar comando'];
+const STEP_DESCS  = [
+  'Crea la carpeta en el disco si no existe ya',
+  'Comparte la carpeta en la red local (acceso total)',
+  'Activa el descubrimiento de red y uso compartido',
+  'Crea un acceso directo a la carpeta en el escritorio',
+  'Copia archivos de una ruta origen a una ruta destino',
+  'Ejecuta un comando personalizado de Windows',
+];
+const STEP_COUNT  = STEP_KEYS.length;
+
+const IDX_COPY_FILES = STEP_KEYS.indexOf('copiar_archivos');
+const IDX_EXEC_CMD   = STEP_KEYS.indexOf('ejecutar_comando');
+
+const CURSOR_GENERATE = STEP_COUNT;
+const CURSOR_BACK     = STEP_COUNT + 1;
+const CURSOR_EXECUTE  = STEP_COUNT + 2;
+
+const NUBEPRINT_OPTIONS = ['Instalar NubePrint', 'Configurar NubePrint'];
+const DRIVER_OPTIONS    = ['Windows 11', 'Windows 10', 'Windows 8.1', 'Windows 7'];
+const MAIN_OPTIONS      = ['Configurar carpeta compartida', 'Instalador NubePrint', 'Instalar driver universal'];
+
+const HINT_SELECT = '  Flechas: mover   Enter: seleccionar   Q: volver';
+
+// ── Application state ─────────────────────────────────────────────────────────
+const state = {
+  screen:          'login',
+  cursor:          0,
+  token:           sessionStorage.getItem('opt_token') || '',
+  loginField:      0,
+  username:        '',
+  password:        '',
+  loginError:      '',
+  loginPending:    false,
+  stepEnabled:     STEP_KEYS.map(() => true),
+  formStep:        0,
+  formValues:      {},
+  messageText:     '',
+  messageSuccess:  true,
+  spinnerIndex:    0,
+  progressPercent: 0,
+  progressText:    '',
 };
 
-let spinTimer = null;
-const SPIN = ['|', '/', '-', '\\'];
+let progressTimer = null;
 
+// ── Progress helpers ──────────────────────────────────────────────────────────
 function startProgress(text, durationMs) {
-  S.screen = 'progress'; S.progText = text; S.spinIdx = 0; S.progPct = 0;
-  if (spinTimer) clearInterval(spinTimer);
-  const steps = durationMs / 80;
+  state.screen          = 'progress';
+  state.progressText    = text;
+  state.spinnerIndex    = 0;
+  state.progressPercent = 0;
+  if (progressTimer) clearInterval(progressTimer);
+  const totalSteps = durationMs / 80;
   let step = 0;
-  spinTimer = setInterval(() => {
+  progressTimer = setInterval(() => {
     step++;
-    S.spinIdx = step % SPIN.length;
-    S.progPct = Math.min(98, (step / steps) * 100);
+    state.spinnerIndex    = step % SPINNER.length;
+    state.progressPercent = Math.min(98, (step / totalSteps) * 100);
     draw();
   }, 80);
   draw();
 }
 
-function finishProgress(ok, text) {
-  if (spinTimer) { clearInterval(spinTimer); spinTimer = null; }
-  S.progPct = 100; draw();
-  setTimeout(() => { S.msgOk = ok; S.msgText = text; S.screen = 'msg'; draw(); }, 300);
+function finishProgress(success, text) {
+  if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+  state.progressPercent = 100;
+  draw();
+  setTimeout(() => {
+    state.messageSuccess = success;
+    state.messageText    = text;
+    state.screen         = 'msg';
+    draw();
+  }, 300);
 }
 
-const KEYS   = ['crear_carpeta','compartir_red','visible_red','acceso_directo','copiar_archivos','ejecutar_comando'];
-const LABELS = ['Crear carpeta','Compartir en red','Visibilidad en red','Acceso directo escritorio','Copiar archivos','Ejecutar comando'];
-const DESCS  = ['Crea la carpeta en el disco si no existe ya',
-                'Comparte la carpeta en la red local (acceso total)',
-                'Activa el descubrimiento de red y uso compartido',
-                'Crea un acceso directo a la carpeta en el escritorio',
-                'Copia archivos de una ruta origen a una ruta destino',
-                'Ejecuta un comando personalizado de Windows'];
-const CN     = KEYS.length;
-const BTN    = CN, BACK_C = CN + 1, EXEC_C = CN + 2;
-
-const NP_OPT   = ['Instalar NubePrint', 'Configurar NubePrint'];
-const DRV_OPT  = ['Windows 11', 'Windows 10', 'Windows 8.1', 'Windows 7'];
-const MAIN_OPT = ['Configurar carpeta compartida', 'Instalador NubePrint', 'Instalar driver universal'];
-
-const VERSION = 'v0.1.1';
+// ── Form field definitions ────────────────────────────────────────────────────
+function getFormFields() {
+  const fields = [
+    { key: 'nombre', label: 'Nombre de la carpeta', defaultValue: 'Escaner' },
+    { key: 'ruta',   label: 'Ruta destino         ', defaultValue: 'C:' },
+  ];
+  if (state.stepEnabled[IDX_COPY_FILES]) {
+    fields.push({ key: 'origen',  label: 'Ruta origen archivos ', defaultValue: 'C:\\origen' });
+    fields.push({ key: 'destino', label: 'Ruta destino archivos', defaultValue: 'D:\\backup' });
+  }
+  if (state.stepEnabled[IDX_EXEC_CMD]) {
+    fields.push({ key: 'desc', label: 'Descripcion comando  ', defaultValue: 'Comando' });
+    fields.push({ key: 'cmd',  label: 'Comando a ejecutar   ', defaultValue: 'echo ok' });
+  }
+  return fields;
+}
 
 // ── Render primitives ─────────────────────────────────────────────────────────
-const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const escapeHtml = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
-function pad(s, n) {
-  s = String(s);
-  return s.length >= n ? s.slice(0, n) : s + ' '.repeat(n - s.length);
+function padEnd(text, width) {
+  const str = String(text);
+  return str.length >= width ? str.slice(0, width) : str + ' '.repeat(width - str.length);
 }
 
-// A blue span of exactly n chars width
-function bs(text, n) {
-  return `<span class="b" style="width:${n}ch">${esc(pad(text, n))}</span>`;
+function blueSpan(text, width) {
+  return `<span class="blue" style="width:${width}ch">${escapeHtml(padEnd(text, width))}</span>`;
 }
 
-// A highlight span of exactly n chars width
-function hs(text, n) {
-  return `<span class="h" style="width:${n}ch">${esc(pad(text, n))}</span>`;
+function highlightSpan(text, width) {
+  return `<span class="selected" style="width:${width}ch">${escapeHtml(padEnd(text, width))}</span>`;
 }
 
-// Row div (inside .box — no indent; box wrapper provides the 2ch left offset)
-function row(...parts) { return `<div class="row">${parts.join('')}</div>`; }
-
-// Empty row outside box
-function erow() { return `<div style="height:1.5em; margin-left:2ch"></div>`; }
-
-// Version row: VERSION right-aligned inside the box
-function topRow() {
-  const v = VERSION + '  ';
-  return brow(pad('', W - v.length) + v);
+function rowDiv(...parts) {
+  return `<div class="row">${parts.join('')}</div>`;
 }
 
-// Full-width blue line (spaces instead of │; CSS border on .box handles sides)
-function brow(text, hl) {
-  const c = pad(text || '', W);
-  if (hl) return row(bs(' ', 1), hs(c, W), bs(' ', 1));
-  return row(bs(' ' + c + ' ', W + 2));
+function emptyRow() {
+  return `<div style="height:1.5em; margin-left:2ch"></div>`;
 }
 
-// Horizontal separator: top/bot → empty (CSS border handles them); mid → ─ line
-function bord(t) {
-  if (t === 'top' || t === 'bot') return '';
-  return row(bs('─'.repeat(W + 2), W + 2));
+function openBox() {
+  return emptyRow() + '<div class="box" style="margin-left:2ch">';
 }
 
-// ── Carpeta button rows ───────────────────────────────────────────────────────
-function btnRow(b1HL, b2HL) {
-  const b1 = '[ CREAR Y DESCARGAR .BAT ]';
-  const b2 = '[ VOLVER AL MENU ]';
-  return row(
-    bs('   ', 3),
-    (b1HL ? hs : bs)(b1, 26),
-    bs('    ', 4),
-    (b2HL ? hs : bs)(b2, 18),
-    bs('     ', 5)
+function closeBox() {
+  return '</div>' + emptyRow();
+}
+
+function versionRow() {
+  const label = VERSION + '  ';
+  return boxRow(padEnd('', BOX_WIDTH - label.length) + label);
+}
+
+function boxRow(text, highlighted = false) {
+  const content = padEnd(text || '', BOX_WIDTH);
+  if (highlighted) return rowDiv(blueSpan(' ', 1), highlightSpan(content, BOX_WIDTH), blueSpan(' ', 1));
+  return rowDiv(blueSpan(' ' + content + ' ', BOX_WIDTH + 2));
+}
+
+function divider() {
+  return rowDiv(blueSpan('─'.repeat(BOX_WIDTH + 2), BOX_WIDTH + 2));
+}
+
+function menuRow(option, isSelected) {
+  const prefix = isSelected ? ' >  ' : '     ';
+  return boxRow(prefix + option, isSelected);
+}
+
+// ── Carpeta action button rows ────────────────────────────────────────────────
+function actionButtonsRow(generateHighlighted, backHighlighted) {
+  const generateLabel = '[ CREAR Y DESCARGAR .BAT ]';
+  const backLabel     = '[ VOLVER AL MENU ]';
+  return rowDiv(
+    blueSpan('   ', 3),
+    (generateHighlighted ? highlightSpan : blueSpan)(generateLabel, 26),
+    blueSpan('    ', 4),
+    (backHighlighted ? highlightSpan : blueSpan)(backLabel, 18),
+    blueSpan('     ', 5)
   );
 }
 
-function execRow(execHL) {
-  const b3 = '[ EJECUTAR AHORA ]';
-  return row(
-    bs(' ' + ' '.repeat(18), 19),
-    (execHL ? hs : bs)(b3, 18),
-    bs(' '.repeat(18) + ' ', 19)
+function executeButtonRow(highlighted) {
+  const label = '[ EJECUTAR AHORA ]';
+  return rowDiv(
+    blueSpan(' '.repeat(19), 19),
+    (highlighted ? highlightSpan : blueSpan)(label, 18),
+    blueSpan(' '.repeat(19), 19)
   );
 }
 
-function backRow(backHL) {
-  const bk = '[ VOLVER AL MENU ]';
-  return row(
-    bs(' ' + ' '.repeat(32), 33),
-    (backHL ? hs : bs)(bk, 18),
-    bs('     ', 5)
+function backButtonRow(highlighted) {
+  const label = '[ VOLVER AL MENU ]';
+  return rowDiv(
+    blueSpan(' '.repeat(33), 33),
+    (highlighted ? highlightSpan : blueSpan)(label, 18),
+    blueSpan('     ', 5)
   );
 }
 
-// ── Screens ───────────────────────────────────────────────────────────────────
+// ── Screen renderers ──────────────────────────────────────────────────────────
 function drawLogin() {
-  let h = erow() + '<div class="box" style="margin-left:2ch">';
-  h += topRow();
-  h += brow(pad('                    OPTIMIZALO', W));
-  h += brow('');
-  h += bord('mid');
-  h += brow('');
-  h += brow('  Introduce tus credenciales:');
-  h += brow('');
-  h += brow('  Usuario:    ' + S.user + (S.lf === 0 ? '█' : ''));
-  h += brow('  Contrasena: ' + '•'.repeat(S.pass.length) + (S.lf === 1 ? '█' : ''));
-  h += brow('');
-  if (S.lerr)  h += brow('  * ' + S.lerr);
-  if (S.lbusy) h += brow('  Iniciando sesion...');
-  h += '</div>' + erow();
-  return h;
+  let html = openBox();
+  html += versionRow();
+  html += boxRow(padEnd('                    OPTIMIZALO', BOX_WIDTH));
+  html += boxRow('');
+  html += divider();
+  html += boxRow('');
+  html += boxRow('  Introduce tus credenciales:');
+  html += boxRow('');
+  html += boxRow('  Usuario:    ' + state.username + (state.loginField === 0 ? '█' : ''));
+  html += boxRow('  Contrasena: ' + '•'.repeat(state.password.length) + (state.loginField === 1 ? '█' : ''));
+  html += boxRow('');
+  if (state.loginError)   html += boxRow('  * ' + state.loginError);
+  if (state.loginPending) html += boxRow('  Iniciando sesion...');
+  html += closeBox();
+  return html;
 }
 
 function drawMain() {
-  let h = erow() + '<div class="box" style="margin-left:2ch">';
-  h += topRow();
-  h += brow(pad('                MENU PRINCIPAL', W));
-  h += brow('');
-  h += bord('mid');
-  h += brow('');
-  MAIN_OPT.forEach((o, i) => h += brow((S.cursor === i ? ' >  ' : '     ') + o, S.cursor === i));
-  h += brow('');
-  h += bord('mid');
-  h += brow('  Flechas: mover   Enter: seleccionar   Q: salir');
-  h += brow('');
-  h += '</div>' + erow();
-  return h;
+  let html = openBox();
+  html += versionRow();
+  html += boxRow(padEnd('                MENU PRINCIPAL', BOX_WIDTH));
+  html += boxRow('');
+  html += divider();
+  html += boxRow('');
+  MAIN_OPTIONS.forEach((option, i) => { html += menuRow(option, state.cursor === i); });
+  html += boxRow('');
+  html += divider();
+  html += boxRow('  Flechas: mover   Enter: seleccionar   Q: salir');
+  html += boxRow('');
+  html += closeBox();
+  return html;
 }
 
 function drawCarpeta() {
-  let h = erow() + '<div class="box" style="margin-left:2ch">';
-  h += topRow();
-  h += brow(pad('          CONFIGURAR CARPETA COMPARTIDA', W));
-  h += brow('');
-  h += bord('mid');
-  h += brow('');
-  for (let i = 0; i < CN; i++) {
-    const cb = S.chk[i] ? '[v]' : '[ ]';
-    h += brow((S.cursor === i ? ' >  ' : '     ') + cb + '   ' + LABELS[i], S.cursor === i);
+  let html = openBox();
+  html += versionRow();
+  html += boxRow(padEnd('          CONFIGURAR CARPETA COMPARTIDA', BOX_WIDTH));
+  html += boxRow('');
+  html += divider();
+  html += boxRow('');
+  for (let i = 0; i < STEP_COUNT; i++) {
+    const checkbox = state.stepEnabled[i] ? '[v]' : '[ ]';
+    html += menuRow(checkbox + '   ' + STEP_LABELS[i], state.cursor === i);
   }
-  h += brow('');
-  h += bord('mid');
-  h += brow(S.cursor < CN ? '  ' + DESCS[S.cursor] : '');
-  h += bord('mid');
-  h += brow('  Flechas: mover   Espacio: marcar   Q: volver');
-  h += brow('');
-  h += btnRow(S.cursor === BTN, S.cursor === BACK_C);
-  h += execRow(S.cursor === EXEC_C);
-  h += brow('');
-  h += '</div>' + erow();
-  return h;
+  html += boxRow('');
+  html += divider();
+  html += boxRow(state.cursor < STEP_COUNT ? '  ' + STEP_DESCS[state.cursor] : '');
+  html += divider();
+  html += boxRow('  Flechas: mover   Espacio: marcar   Q: volver');
+  html += boxRow('');
+  html += actionButtonsRow(state.cursor === CURSOR_GENERATE, state.cursor === CURSOR_BACK);
+  html += executeButtonRow(state.cursor === CURSOR_EXECUTE);
+  html += boxRow('');
+  html += closeBox();
+  return html;
+}
+
+function drawSimpleMenu(title, options, backCursorIndex) {
+  let html = openBox();
+  html += versionRow();
+  html += boxRow(padEnd(title, BOX_WIDTH));
+  html += boxRow('');
+  html += divider();
+  html += boxRow('');
+  options.forEach((option, i) => { html += menuRow(option, state.cursor === i); });
+  html += boxRow('');
+  html += divider();
+  html += boxRow(HINT_SELECT);
+  html += boxRow('');
+  html += backButtonRow(state.cursor === backCursorIndex);
+  html += boxRow('');
+  html += closeBox();
+  return html;
 }
 
 function drawNubeprint() {
-  const BACK = NP_OPT.length;
-  let h = erow() + '<div class="box" style="margin-left:2ch">';
-  h += topRow();
-  h += brow(pad('              INSTALADOR NUBEPRINT', W));
-  h += brow('');
-  h += bord('mid');
-  h += brow('');
-  NP_OPT.forEach((o, i) => h += brow((S.cursor === i ? ' >  ' : '     ') + o, S.cursor === i));
-  h += brow('');
-  h += bord('mid');
-  h += brow('  Flechas: mover   Enter: seleccionar   Q: volver');
-  h += brow('');
-  h += backRow(S.cursor === BACK);
-  h += brow('');
-  h += '</div>' + erow();
-  return h;
+  return drawSimpleMenu('              INSTALADOR NUBEPRINT', NUBEPRINT_OPTIONS, NUBEPRINT_OPTIONS.length);
 }
 
 function drawDriver() {
-  const BACK = DRV_OPT.length;
-  let h = erow() + '<div class="box" style="margin-left:2ch">';
-  h += topRow();
-  h += brow(pad('            INSTALAR DRIVER UNIVERSAL', W));
-  h += brow('');
-  h += bord('mid');
-  h += brow('');
-  DRV_OPT.forEach((o, i) => h += brow((S.cursor === i ? ' >  ' : '     ') + o, S.cursor === i));
-  h += brow('');
-  h += bord('mid');
-  h += brow('  Flechas: mover   Enter: seleccionar   Q: volver');
-  h += brow('');
-  h += backRow(S.cursor === BACK);
-  h += brow('');
-  h += '</div>' + erow();
-  return h;
-}
-
-function getFormFields() {
-  const f = [
-    { key: 'nombre', label: 'Nombre de la carpeta', def: 'Escaner' },
-    { key: 'ruta',   label: 'Ruta destino         ', def: 'C:' },
-  ];
-  if (S.chk[KEYS.indexOf('copiar_archivos')]) {
-    f.push({ key: 'origen',  label: 'Ruta origen archivos ', def: 'C:\\origen' });
-    f.push({ key: 'destino', label: 'Ruta destino archivos', def: 'D:\\backup' });
-  }
-  if (S.chk[KEYS.indexOf('ejecutar_comando')]) {
-    f.push({ key: 'desc', label: 'Descripcion comando  ', def: 'Comando' });
-    f.push({ key: 'cmd',  label: 'Comando a ejecutar   ', def: 'echo ok' });
-  }
-  return f;
+  return drawSimpleMenu('            INSTALAR DRIVER UNIVERSAL', DRIVER_OPTIONS, DRIVER_OPTIONS.length);
 }
 
 function drawForm() {
   const fields = getFormFields();
-  let h = erow() + '<div class="box" style="margin-left:2ch">';
-  h += topRow();
-  h += brow(pad('          CONFIGURAR CARPETA COMPARTIDA', W));
-  h += brow('');
-  h += brow('  Rellena los datos:');
-  h += brow('');
-  h += bord('mid');
-  h += brow('');
-  for (let i = 0; i < S.formStage && i < fields.length; i++) {
-    const f = fields[i];
-    h += brow('  ' + f.label + ': ' + (S.formVals[f.key] || f.def));
+  let html = openBox();
+  html += versionRow();
+  html += boxRow(padEnd('          CONFIGURAR CARPETA COMPARTIDA', BOX_WIDTH));
+  html += boxRow('');
+  html += boxRow('  Rellena los datos:');
+  html += boxRow('');
+  html += divider();
+  html += boxRow('');
+  for (let i = 0; i < state.formStep && i < fields.length; i++) {
+    const field = fields[i];
+    html += boxRow('  ' + field.label + ': ' + (state.formValues[field.key] || field.defaultValue));
   }
-  if (S.formStage < fields.length) {
-    const f = fields[S.formStage];
-    h += brow('  ' + f.label + ': ' + (S.formVals[f.key] || '') + '█');
+  if (state.formStep < fields.length) {
+    const field = fields[state.formStep];
+    html += boxRow('  ' + field.label + ': ' + (state.formValues[field.key] || '') + '█');
   }
-  h += brow('');
-  h += bord('mid');
-  h += brow('  Enter: confirmar   vacio = valor por defecto');
-  h += brow('');
-  h += '</div>' + erow();
-  return h;
+  html += boxRow('');
+  html += divider();
+  html += boxRow('  Enter: confirmar   vacio = valor por defecto');
+  html += boxRow('');
+  html += closeBox();
+  return html;
 }
 
 function drawMsg() {
-  let h = erow() + '<div class="box" style="margin-left:2ch">';
-  h += topRow();
-  h += brow(S.msgOk ? '  [OK]  Operacion completada.' : '  [!]   Atencion:');
-  h += brow('');
-  h += brow('  ' + S.msgText);
-  h += brow('');
-  h += bord('mid');
-  h += brow('  Presiona Enter o Espacio para volver');
-  h += brow('');
-  h += '</div>' + erow();
-  return h;
+  let html = openBox();
+  html += versionRow();
+  html += boxRow(state.messageSuccess ? '  [OK]  Operacion completada.' : '  [!]   Atencion:');
+  html += boxRow('');
+  html += boxRow('  ' + state.messageText);
+  html += boxRow('');
+  html += divider();
+  html += boxRow('  Presiona Enter o Espacio para volver');
+  html += boxRow('');
+  html += closeBox();
+  return html;
 }
 
 function drawProgress() {
-  const spin = SPIN[S.spinIdx % SPIN.length];
-  const pct  = Math.round(S.progPct);
-  const barW = W - 9;
-  const fill = Math.round((pct / 100) * barW);
-  const bar  = '█'.repeat(fill) + '░'.repeat(barW - fill);
-  let h = erow() + '<div class="box" style="margin-left:2ch">';
-  h += topRow();
-  h += brow('  ' + S.progText);
-  h += brow('');
-  h += brow('  [' + spin + ']  Espera un momento...');
-  h += brow('');
-  h += brow('  [' + bar + '] ' + pad(pct + '%', 4));
-  h += brow('');
-  h += '</div>' + erow();
-  return h;
+  const spinner  = SPINNER[state.spinnerIndex % SPINNER.length];
+  const pct      = Math.round(state.progressPercent);
+  const barWidth = BOX_WIDTH - 9;
+  const filled   = Math.round((pct / 100) * barWidth);
+  const bar      = '█'.repeat(filled) + '░'.repeat(barWidth - filled);
+  let html = openBox();
+  html += versionRow();
+  html += boxRow('  ' + state.progressText);
+  html += boxRow('');
+  html += boxRow('  [' + spinner + ']  Espera un momento...');
+  html += boxRow('');
+  html += boxRow('  [' + bar + '] ' + padEnd(pct + '%', 4));
+  html += boxRow('');
+  html += closeBox();
+  return html;
 }
 
+const SCREEN_RENDERERS = {
+  login:     drawLogin,
+  main:      drawMain,
+  carpeta:   drawCarpeta,
+  nubeprint: drawNubeprint,
+  driver:    drawDriver,
+  form:      drawForm,
+  msg:       drawMsg,
+  progress:  drawProgress,
+};
+
 function draw() {
-  const t = document.getElementById('term');
-  switch (S.screen) {
-    case 'login':     t.innerHTML = drawLogin();     break;
-    case 'main':      t.innerHTML = drawMain();      break;
-    case 'carpeta':   t.innerHTML = drawCarpeta();   break;
-    case 'nubeprint': t.innerHTML = drawNubeprint(); break;
-    case 'driver':    t.innerHTML = drawDriver();    break;
-    case 'form':      t.innerHTML = drawForm();      break;
-    case 'msg':       t.innerHTML = drawMsg();       break;
-    case 'progress':  t.innerHTML = drawProgress();  break;
-  }
+  const terminal = document.getElementById('terminal');
+  const renderer = SCREEN_RENDERERS[state.screen];
+  if (renderer) terminal.innerHTML = renderer();
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
+function navigateTo(screen, cursor = 0) {
+  state.screen = screen;
+  state.cursor = cursor;
+  draw();
+}
+
+function logout() {
+  sessionStorage.removeItem('opt_token');
+  state.token      = '';
+  state.screen     = 'login';
+  state.loginField = 0;
+  state.username   = '';
+  state.password   = '';
+  state.loginError = '';
+  draw();
+}
+
+function buildStepParams(stepType, { nombre, ruta, fullPath, values }) {
+  switch (stepType) {
+    case 'crear_carpeta':    return { nombre, ruta };
+    case 'compartir_red':    return { nombre_compartido: nombre, ruta_completa: fullPath };
+    case 'visible_red':      return {};
+    case 'acceso_directo':   return { nombre, ruta_completa: fullPath };
+    case 'copiar_archivos':  return { origen: values.origen, destino: values.destino };
+    case 'ejecutar_comando': return { descripcion: values.desc, comando: values.cmd };
+    default:                 return {};
+  }
+}
+
+function buildBatPayload() {
+  const fields = getFormFields();
+  const values = {};
+  fields.forEach(field => { values[field.key] = state.formValues[field.key] || field.defaultValue; });
+
+  const { nombre, ruta } = values;
+  const fullPath = ruta + '\\' + nombre;
+  const steps = [];
+
+  for (let i = 0; i < STEP_COUNT; i++) {
+    if (!state.stepEnabled[i]) continue;
+    const stepType = STEP_KEYS[i];
+    steps.push({ type: stepType, params: buildStepParams(stepType, { nombre, ruta, fullPath, values }) });
+  }
+  return { nombre, steps };
+}
+
 async function doLogin() {
-  if (S.lbusy) return;
-  S.lbusy = true; S.lerr = ''; draw();
+  if (state.loginPending) return;
+  state.loginPending = true;
+  state.loginError   = '';
+  draw();
   try {
-    const r = await fetch(AUTH_URL, {
-      method: 'POST',
+    const response = await fetch(AUTH_URL, {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: S.user, password: S.pass }),
+      body:    JSON.stringify({ username: state.username, password: state.password }),
     });
-    const d = await r.json();
-    if (r.ok) {
-      S.token = d.token;
-      sessionStorage.setItem('opt_token', S.token);
-      S.screen = 'main'; S.cursor = 0;
+    const data = await response.json();
+    if (response.ok) {
+      state.token = data.token;
+      sessionStorage.setItem('opt_token', state.token);
+      navigateTo('main');
     } else {
-      S.lerr = d.error || 'Credenciales incorrectas';
-      S.lf = 0; S.user = ''; S.pass = '';
+      state.loginError = data.error || 'Credenciales incorrectas';
+      state.loginField = 0;
+      state.username   = '';
+      state.password   = '';
     }
-  } catch { S.lerr = 'Error de conexion'; }
-  S.lbusy = false; draw();
+  } catch (err) {
+    state.loginError = 'Error de conexion';
+  }
+  state.loginPending = false;
+  draw();
 }
 
 async function doGenerate() {
-  const fields = getFormFields();
-  const vals   = {};
-  fields.forEach(f => { vals[f.key] = S.formVals[f.key] || f.def; });
-
-  const nombre = vals.nombre;
-  const ruta   = vals.ruta;
-  const full   = ruta + '\\' + nombre;
-  const steps  = [];
-
-  for (let i = 0; i < CN; i++) {
-    if (!S.chk[i]) continue;
-    const t = KEYS[i];
-    let params = {};
-    switch (t) {
-      case 'crear_carpeta':    params = { nombre, ruta }; break;
-      case 'compartir_red':    params = { nombre_compartido: nombre, ruta_completa: full }; break;
-      case 'visible_red':      params = {}; break;
-      case 'acceso_directo':   params = { nombre, ruta_completa: full }; break;
-      case 'copiar_archivos':  params = { origen: vals.origen, destino: vals.destino }; break;
-      case 'ejecutar_comando': params = { descripcion: vals.desc, comando: vals.cmd }; break;
-    }
-    steps.push({ type: t, params });
-  }
-
+  const payload = buildBatPayload();
   startProgress('Generando script .bat...', 4000);
-
   try {
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': S.token },
-      body: JSON.stringify({ nombre, steps }),
+    const response = await fetch(API_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Auth-Token': state.token },
+      body:    JSON.stringify(payload),
     });
-    if (res.ok) {
-      const blob = await res.blob();
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href = url; a.download = nombre.replace(/\s+/g, '_') + '.bat'; a.click();
-      URL.revokeObjectURL(url);
-      finishProgress(true, 'Archivo descargado: ' + nombre + '.bat');
+    if (response.ok) {
+      const blob         = await response.blob();
+      const objectUrl    = URL.createObjectURL(blob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href     = objectUrl;
+      downloadLink.download = payload.nombre.replace(/\s+/g, '_') + '.bat';
+      downloadLink.click();
+      URL.revokeObjectURL(objectUrl);
+      finishProgress(true, 'Archivo descargado: ' + payload.nombre + '.bat');
     } else {
-      const d = await res.json().catch(() => ({ error: 'Error' }));
-      finishProgress(false, d.error || 'Error al generar');
+      const data = await response.json().catch(() => ({ error: 'Error' }));
+      finishProgress(false, data.error || 'Error al generar');
     }
-  } catch { finishProgress(false, 'Error de conexion'); }
+  } catch (err) {
+    finishProgress(false, 'Error de conexion');
+  }
 }
 
 // ── Key handlers ──────────────────────────────────────────────────────────────
+function navigateList(e, maxIndex) {
+  if (e.key === 'ArrowUp')   { if (state.cursor > 0)        state.cursor--; draw(); return true; }
+  if (e.key === 'ArrowDown') { if (state.cursor < maxIndex) state.cursor++; draw(); return true; }
+  return false;
+}
+
 function handleLogin(e) {
-  if (S.lbusy) return;
-  if (e.key === 'Tab')       { S.lf = 1 - S.lf; draw(); return; }
-  if (e.key === 'Enter')     { if (S.lf === 0) { S.lf = 1; draw(); } else doLogin(); return; }
-  if (e.key === 'Backspace') { if (S.lf === 0) S.user = S.user.slice(0,-1); else S.pass = S.pass.slice(0,-1); draw(); return; }
-  if (e.key.length === 1)    { if (S.lf === 0) S.user += e.key; else S.pass += e.key; draw(); }
+  if (state.loginPending) return;
+  if (e.key === 'Tab')       { state.loginField = 1 - state.loginField; draw(); return; }
+  if (e.key === 'Enter')     { if (state.loginField === 0) { state.loginField = 1; draw(); } else doLogin(); return; }
+  if (e.key === 'Backspace') {
+    if (state.loginField === 0) state.username = state.username.slice(0, -1);
+    else                        state.password = state.password.slice(0, -1);
+    draw();
+    return;
+  }
+  if (e.key.length === 1) {
+    if (state.loginField === 0) state.username += e.key;
+    else                        state.password += e.key;
+    draw();
+  }
 }
 
 function handleMain(e) {
-  const max = MAIN_OPT.length - 1;
-  if (e.key === 'ArrowUp')   { if (S.cursor > 0)  S.cursor--; draw(); return; }
-  if (e.key === 'ArrowDown') { if (S.cursor < max) S.cursor++; draw(); return; }
+  if (navigateList(e, MAIN_OPTIONS.length - 1)) return;
   if (e.key === 'Enter') {
-    if (S.cursor === 0) { S.screen = 'carpeta';   S.cursor = 0; }
-    if (S.cursor === 1) { S.screen = 'nubeprint'; S.cursor = 0; }
-    if (S.cursor === 2) { S.screen = 'driver';    S.cursor = 0; }
-    draw();
+    const destinations = ['carpeta', 'nubeprint', 'driver'];
+    if (destinations[state.cursor]) navigateTo(destinations[state.cursor]);
+    return;
   }
-  if (e.key === 'q' || e.key === 'Q') {
-    sessionStorage.removeItem('opt_token'); S.token = '';
-    S.screen = 'login'; S.lf = 0; S.user = ''; S.pass = ''; S.lerr = ''; draw();
-  }
+  if (e.key === 'q' || e.key === 'Q') logout();
 }
 
 function handleCarpeta(e) {
   if (e.key === 'ArrowUp') {
-    if      (S.cursor === EXEC_C)                     S.cursor = BTN;
-    else if (S.cursor === BTN || S.cursor === BACK_C)  S.cursor = CN - 1;
-    else if (S.cursor > 0)                            S.cursor--;
+    if      (state.cursor === CURSOR_EXECUTE)                                     state.cursor = CURSOR_GENERATE;
+    else if (state.cursor === CURSOR_GENERATE || state.cursor === CURSOR_BACK)    state.cursor = STEP_COUNT - 1;
+    else if (state.cursor > 0)                                                    state.cursor--;
     draw(); return;
   }
   if (e.key === 'ArrowDown') {
-    if      (S.cursor < CN - 1)                       S.cursor++;
-    else if (S.cursor === CN - 1)                     S.cursor = BTN;
-    else if (S.cursor === BTN || S.cursor === BACK_C)  S.cursor = EXEC_C;
+    if      (state.cursor < STEP_COUNT - 1)                                       state.cursor++;
+    else if (state.cursor === STEP_COUNT - 1)                                     state.cursor = CURSOR_GENERATE;
+    else if (state.cursor === CURSOR_GENERATE || state.cursor === CURSOR_BACK)    state.cursor = CURSOR_EXECUTE;
     draw(); return;
   }
-  if (e.key === 'ArrowLeft')  { if (S.cursor === BACK_C) S.cursor = BTN;    draw(); return; }
-  if (e.key === 'ArrowRight') { if (S.cursor === BTN)    S.cursor = BACK_C; draw(); return; }
+  if (e.key === 'ArrowLeft')  { if (state.cursor === CURSOR_BACK)     state.cursor = CURSOR_GENERATE; draw(); return; }
+  if (e.key === 'ArrowRight') { if (state.cursor === CURSOR_GENERATE) state.cursor = CURSOR_BACK;     draw(); return; }
   if (e.key === ' ' || e.key === 'Enter') {
-    if (S.cursor < CN) { S.chk[S.cursor] = 1 - S.chk[S.cursor]; draw(); return; }
-    if (S.cursor === BACK_C) { S.screen = 'main'; S.cursor = 0; draw(); return; }
-    if (S.cursor === BTN && S.chk.some(v => v))
-      { S.formStage = 0; S.formVals = {}; S.screen = 'form'; draw(); return; }
-    if (S.cursor === EXEC_C)
-      { S.msgOk = false; S.msgText = 'Solo disponible via PowerShell en Windows.'; S.screen = 'msg'; draw(); return; }
+    if (state.cursor < STEP_COUNT) {
+      state.stepEnabled[state.cursor] = !state.stepEnabled[state.cursor];
+      draw(); return;
+    }
+    if (state.cursor === CURSOR_BACK) { navigateTo('main'); return; }
+    if (state.cursor === CURSOR_GENERATE && state.stepEnabled.some(Boolean)) {
+      state.formStep = 0; state.formValues = {}; navigateTo('form'); return;
+    }
+    if (state.cursor === CURSOR_EXECUTE) {
+      state.messageSuccess = false;
+      state.messageText    = 'Solo disponible via PowerShell en Windows.';
+      navigateTo('msg');
+    }
   }
-  if (e.key === 'q' || e.key === 'Q') { S.screen = 'main'; S.cursor = 0; draw(); }
+  if (e.key === 'q' || e.key === 'Q') navigateTo('main');
 }
 
 function handleNubeprint(e) {
-  const BACK = NP_OPT.length;
-  if (e.key === 'ArrowUp')   { if (S.cursor > 0)    S.cursor--; draw(); return; }
-  if (e.key === 'ArrowDown') { if (S.cursor < BACK)  S.cursor++; draw(); return; }
+  const backIndex = NUBEPRINT_OPTIONS.length;
+  if (navigateList(e, backIndex)) return;
   if (e.key === 'Enter') {
-    if (S.cursor === 0) {
+    if (state.cursor === 0) {
       startProgress('Descargando NubePrint CPM...', 12000);
       window.open('https://zero.nubeprint.com/download/cpms/Nubeprint%20CPM.msi', '_blank');
       setTimeout(() => finishProgress(true, 'Descarga iniciada: Nubeprint CPM.msi'), 2500);
-    } else if (S.cursor === 1) {
-      S.msgOk = false; S.msgText = 'Configuracion NubePrint: Proximamente...'; S.screen = 'msg'; draw();
+    } else if (state.cursor === 1) {
+      state.messageSuccess = false;
+      state.messageText    = 'Configuracion NubePrint: Proximamente...';
+      navigateTo('msg');
     } else {
-      S.screen = 'main'; S.cursor = 1; draw();
+      navigateTo('main', 1);
     }
   }
-  if (e.key === 'q' || e.key === 'Q') { S.screen = 'main'; S.cursor = 1; draw(); }
+  if (e.key === 'q' || e.key === 'Q') navigateTo('main', 1);
 }
 
 function handleDriver(e) {
-  const BACK = DRV_OPT.length;
-  if (e.key === 'ArrowUp')   { if (S.cursor > 0)    S.cursor--; draw(); return; }
-  if (e.key === 'ArrowDown') { if (S.cursor < BACK)  S.cursor++; draw(); return; }
+  const backIndex = DRIVER_OPTIONS.length;
+  if (navigateList(e, backIndex)) return;
   if (e.key === 'Enter') {
-    if (S.cursor < DRV_OPT.length) {
-      startProgress('Descargando Driver Universal HP ' + DRV_OPT[S.cursor] + '...', 20000);
+    if (state.cursor < DRIVER_OPTIONS.length) {
+      startProgress('Descargando Driver Universal HP ' + DRIVER_OPTIONS[state.cursor] + '...', 20000);
       window.open('https://ftp.hp.com/pub/softlib/software13/printers/UPD/upd-pcl6-win10-x64-8.2.0.26778.zip', '_blank');
       setTimeout(() => finishProgress(true, 'Descarga iniciada: HP_UPD_PCL6.zip'), 2500);
     } else {
-      S.screen = 'main'; S.cursor = 2; draw();
+      navigateTo('main', 2);
     }
   }
-  if (e.key === 'q' || e.key === 'Q') { S.screen = 'main'; S.cursor = 2; draw(); }
+  if (e.key === 'q' || e.key === 'Q') navigateTo('main', 2);
 }
 
 function handleForm(e) {
-  if (e.key === 'q' || e.key === 'Q') { S.screen = 'carpeta'; S.cursor = 0; draw(); return; }
+  if (e.key === 'q' || e.key === 'Q') { navigateTo('carpeta'); return; }
   const fields = getFormFields();
-  if (S.formStage >= fields.length) return;
-  const f = fields[S.formStage];
+  if (state.formStep >= fields.length) return;
+  const field = fields[state.formStep];
   if (e.key === 'Enter') {
-    S.formVals[f.key] = S.formVals[f.key] || f.def;
-    S.formStage++;
-    if (S.formStage >= fields.length) doGenerate();
+    state.formValues[field.key] = state.formValues[field.key] || field.defaultValue;
+    state.formStep++;
+    if (state.formStep >= fields.length) doGenerate();
     else draw();
     return;
   }
-  if (e.key === 'Backspace') { S.formVals[f.key] = (S.formVals[f.key] || '').slice(0,-1); draw(); return; }
-  if (e.key.length === 1)    { S.formVals[f.key] = (S.formVals[f.key] || '') + e.key; draw(); }
+  if (e.key === 'Backspace') { state.formValues[field.key] = (state.formValues[field.key] || '').slice(0, -1); draw(); return; }
+  if (e.key.length === 1)    { state.formValues[field.key] = (state.formValues[field.key] || '') + e.key; draw(); }
 }
 
 function handleMsg(e) {
-  if (e.key === 'Enter' || e.key === ' ' || e.key === 'q' || e.key === 'Q')
-    { S.screen = 'main'; S.cursor = 0; draw(); }
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'q' || e.key === 'Q') navigateTo('main');
 }
 
 function handleProgress(e) {
   if (e.key === 'q' || e.key === 'Q') {
-    if (spinTimer) { clearInterval(spinTimer); spinTimer = null; }
-    S.screen = 'main'; S.cursor = 0; draw();
+    if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+    navigateTo('main');
   }
 }
 
-document.getElementById('term').addEventListener('keydown', e => {
+const KEY_HANDLERS = {
+  login:     handleLogin,
+  main:      handleMain,
+  carpeta:   handleCarpeta,
+  nubeprint: handleNubeprint,
+  driver:    handleDriver,
+  form:      handleForm,
+  msg:       handleMsg,
+  progress:  handleProgress,
+};
+
+document.getElementById('terminal').addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   e.preventDefault();
-  switch (S.screen) {
-    case 'login':     handleLogin(e);     break;
-    case 'main':      handleMain(e);      break;
-    case 'carpeta':   handleCarpeta(e);   break;
-    case 'nubeprint': handleNubeprint(e); break;
-    case 'driver':    handleDriver(e);    break;
-    case 'form':      handleForm(e);      break;
-    case 'msg':       handleMsg(e);       break;
-    case 'progress':  handleProgress(e);  break;
-  }
+  const handler = KEY_HANDLERS[state.screen];
+  if (handler) handler(e);
 });
 
-if (S.token) S.screen = 'main';
+if (state.token) state.screen = 'main';
 draw();
-document.getElementById('term').focus();
+document.getElementById('terminal').focus();
 </script>
 </body>
 </html>
