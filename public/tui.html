@@ -21,6 +21,7 @@ body {
 .row  { display: flex; align-items: stretch; flex-shrink: 0; }
 .b    { background: #0037DA; color: #fff; white-space: pre; overflow: hidden; flex-shrink: 0; line-height: 1.5; }
 .h    { background: #3B78FF; color: #fff; font-weight: bold; white-space: pre; overflow: hidden; flex-shrink: 0; line-height: 1.5; }
+.box  { display: flex; flex-direction: column; border: 1px solid rgba(200,225,255,0.85); }
 @media (max-width: 600px) { body { font-size: 10px; } }
 </style>
 </head>
@@ -28,7 +29,7 @@ body {
 <div id="term" tabindex="0"></div>
 <script>
 const W        = 54;
-const IND      = 2;
+const IND      = 2;  // kept for reference; box uses margin-left via CSS .box
 const API_URL  = '/api/generate';
 const AUTH_URL = '/api/auth';
 
@@ -101,16 +102,11 @@ function hs(text, n) {
   return `<span class="h" style="width:${n}ch">${esc(pad(text, n))}</span>`;
 }
 
-// A transparent indent span
-function ind() { return `<span style="width:${IND}ch"></span>`; }
+// Row div (inside .box — no indent; box wrapper provides the 2ch left offset)
+function row(...parts) { return `<div class="row">${parts.join('')}</div>`; }
 
-// Wrap spans in a row div
-function row(...parts) {
-  return `<div class="row">${ind()}${parts.join('')}</div>`;
-}
-
-// Empty row (no box)
-function erow() { return `<div style="height:1.5em"></div>`; }
+// Empty row outside box
+function erow() { return `<div style="height:1.5em; margin-left:2ch"></div>`; }
 
 // Version row: VERSION right-aligned inside the box
 function topRow() {
@@ -118,18 +114,17 @@ function topRow() {
   return brow(pad('', W - v.length) + v);
 }
 
-// Full-width blue line: │ padded content │
+// Full-width blue line (spaces instead of │; CSS border on .box handles sides)
 function brow(text, hl) {
   const c = pad(text || '', W);
-  if (hl) return row(bs('│', 1), hs(c, W), bs('│', 1));
-  return row(bs('│' + c + '│', W + 2));
+  if (hl) return row(bs(' ', 1), hs(c, W), bs(' ', 1));
+  return row(bs(' ' + c + ' ', W + 2));
 }
 
-// Border: ┌─┐ top  ├─┤ mid  └─┘ bot
+// Horizontal separator: top/bot → empty (CSS border handles them); mid → ─ line
 function bord(t) {
-  const L = t==='top'?'┌':t==='bot'?'└':'├';
-  const R = t==='top'?'┐':t==='bot'?'┘':'┤';
-  return row(bs(L+'─'.repeat(W)+R, W+2));
+  if (t === 'top' || t === 'bot') return '';
+  return row(bs('─'.repeat(W + 2), W + 2));
 }
 
 // ── Carpeta button rows ───────────────────────────────────────────────────────
@@ -137,35 +132,35 @@ function btnRow(b1HL, b2HL) {
   const b1 = '[ CREAR Y DESCARGAR .BAT ]';
   const b2 = '[ VOLVER AL MENU ]';
   return row(
-    bs('│  ', 3),
+    bs('   ', 3),
     (b1HL ? hs : bs)(b1, 26),
     bs('    ', 4),
     (b2HL ? hs : bs)(b2, 18),
-    bs('    │', 5)
+    bs('     ', 5)
   );
 }
 
 function execRow(execHL) {
   const b3 = '[ EJECUTAR AHORA ]';
   return row(
-    bs('│' + ' '.repeat(18), 19),
+    bs(' ' + ' '.repeat(18), 19),
     (execHL ? hs : bs)(b3, 18),
-    bs(' '.repeat(18) + '│', 19)
+    bs(' '.repeat(18) + ' ', 19)
   );
 }
 
 function backRow(backHL) {
   const bk = '[ VOLVER AL MENU ]';
   return row(
-    bs('│' + ' '.repeat(32), 33),
+    bs(' ' + ' '.repeat(32), 33),
     (backHL ? hs : bs)(bk, 18),
-    bs('    │', 5)
+    bs('     ', 5)
   );
 }
 
 // ── Screens ───────────────────────────────────────────────────────────────────
 function drawLogin() {
-  let h = erow() + bord('top');
+  let h = erow() + '<div class="box" style="margin-left:2ch">';
   h += topRow();
   h += brow(pad('                    OPTIMIZALO', W));
   h += brow('');
@@ -178,13 +173,12 @@ function drawLogin() {
   h += brow('');
   if (S.lerr)  h += brow('  * ' + S.lerr);
   if (S.lbusy) h += brow('  Iniciando sesion...');
-  h += bord('bot');
-  h += erow();
+  h += '</div>' + erow();
   return h;
 }
 
 function drawMain() {
-  let h = erow() + bord('top');
+  let h = erow() + '<div class="box" style="margin-left:2ch">';
   h += topRow();
   h += brow(pad('                MENU PRINCIPAL', W));
   h += brow('');
@@ -195,13 +189,12 @@ function drawMain() {
   h += bord('mid');
   h += brow('  Flechas: mover   Enter: seleccionar   Q: salir');
   h += brow('');
-  h += bord('bot');
-  h += erow();
+  h += '</div>' + erow();
   return h;
 }
 
 function drawCarpeta() {
-  let h = erow() + bord('top');
+  let h = erow() + '<div class="box" style="margin-left:2ch">';
   h += topRow();
   h += brow(pad('          CONFIGURAR CARPETA COMPARTIDA', W));
   h += brow('');
@@ -220,14 +213,13 @@ function drawCarpeta() {
   h += btnRow(S.cursor === BTN, S.cursor === BACK_C);
   h += execRow(S.cursor === EXEC_C);
   h += brow('');
-  h += bord('bot');
-  h += erow();
+  h += '</div>' + erow();
   return h;
 }
 
 function drawNubeprint() {
   const BACK = NP_OPT.length;
-  let h = erow() + bord('top');
+  let h = erow() + '<div class="box" style="margin-left:2ch">';
   h += topRow();
   h += brow(pad('              INSTALADOR NUBEPRINT', W));
   h += brow('');
@@ -240,14 +232,13 @@ function drawNubeprint() {
   h += brow('');
   h += backRow(S.cursor === BACK);
   h += brow('');
-  h += bord('bot');
-  h += erow();
+  h += '</div>' + erow();
   return h;
 }
 
 function drawDriver() {
   const BACK = DRV_OPT.length;
-  let h = erow() + bord('top');
+  let h = erow() + '<div class="box" style="margin-left:2ch">';
   h += topRow();
   h += brow(pad('            INSTALAR DRIVER UNIVERSAL', W));
   h += brow('');
@@ -260,8 +251,7 @@ function drawDriver() {
   h += brow('');
   h += backRow(S.cursor === BACK);
   h += brow('');
-  h += bord('bot');
-  h += erow();
+  h += '</div>' + erow();
   return h;
 }
 
@@ -283,13 +273,13 @@ function getFormFields() {
 
 function drawForm() {
   const fields = getFormFields();
-  let h = erow() + bord();
+  let h = erow() + '<div class="box" style="margin-left:2ch">';
   h += topRow();
   h += brow(pad('          CONFIGURAR CARPETA COMPARTIDA', W));
   h += brow('');
   h += brow('  Rellena los datos:');
   h += brow('');
-  h += bord();
+  h += bord('mid');
   h += brow('');
   for (let i = 0; i < S.formStage && i < fields.length; i++) {
     const f = fields[i];
@@ -300,36 +290,34 @@ function drawForm() {
     h += brow('  ' + f.label + ': ' + (S.formVals[f.key] || '') + '█');
   }
   h += brow('');
-  h += bord();
+  h += bord('mid');
   h += brow('  Enter: confirmar   vacio = valor por defecto');
   h += brow('');
-  h += bord();
-  h += erow();
+  h += '</div>' + erow();
   return h;
 }
 
 function drawMsg() {
-  let h = erow() + bord();
+  let h = erow() + '<div class="box" style="margin-left:2ch">';
   h += topRow();
   h += brow(S.msgOk ? '  [OK]  Operacion completada.' : '  [!]   Atencion:');
   h += brow('');
   h += brow('  ' + S.msgText);
   h += brow('');
-  h += bord();
+  h += bord('mid');
   h += brow('  Presiona Enter o Espacio para volver');
   h += brow('');
-  h += bord();
-  h += erow();
+  h += '</div>' + erow();
   return h;
 }
 
 function drawProgress() {
   const spin = SPIN[S.spinIdx % SPIN.length];
   const pct  = Math.round(S.progPct);
-  const barW = W - 9;  // [  bar  ] xx%  → 3+barW+2+4 = W
+  const barW = W - 9;
   const fill = Math.round((pct / 100) * barW);
   const bar  = '█'.repeat(fill) + '░'.repeat(barW - fill);
-  let h = erow() + bord();
+  let h = erow() + '<div class="box" style="margin-left:2ch">';
   h += topRow();
   h += brow('  ' + S.progText);
   h += brow('');
@@ -337,8 +325,7 @@ function drawProgress() {
   h += brow('');
   h += brow('  [' + bar + '] ' + pad(pct + '%', 4));
   h += brow('');
-  h += bord();
-  h += erow();
+  h += '</div>' + erow();
   return h;
 }
 
