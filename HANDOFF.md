@@ -155,14 +155,24 @@ curl -X POST http://localhost:3000/api/generate \
 
 ---
 
-## Historial de estado (última sesión — 2026-07-01)
+## Historial de estado (última sesión — 2026-07-02)
 
-Se creó `public/tui.html`: menú TUI web que replica visualmente el CMD.
-- Accesible en `tooloptimizalo.xyz/tui` sin instalar nada, desde cualquier equipo
-- Navegación completa con flechas + Enter + Espacio + Q
-- Login con sesión en `sessionStorage` (se cierra al cerrar la pestaña)
-- Carpeta compartida con checkboxes y generación de .bat con barra de progreso animada
-- NubePrint y Driver Universal con animación de carga
-- Ruta `/tui` añadida en `vercel.json`
-- Bordes del marco renderizados con `border` CSS (no caracteres Unicode) → líneas continuas garantizadas en todos los lados
-- Versión actualizada a v0.1.1 (10 cambios acumulados desde v0.0.1)
+### tui.html — v0.1.2 (refactorización Clean Code completa)
+
+**Bordes continuos (v0.1.1):**
+- Marco del TUI renderizado con `border` CSS en vez de caracteres `│` → líneas laterales continuas garantizadas independientemente de fuente/pantalla
+
+**Refactorización Clean Code (v0.1.2):**
+- `S` → `state` con campos descriptivos (`loginField`, `loginError`, `loginPending`, `stepEnabled`, `formStep`, `formValues`, `messageText`, `messageSuccess`, `spinnerIndex`, `progressPercent`, `progressText`)
+- `bs`/`hs`/`brow`/`bord`/`erow` → `blueSpan`/`highlightSpan`/`boxRow`/`divider`/`emptyRow`
+- `W`/`CN`/`BTN`/`BACK_C`/`EXEC_C` → `BOX_WIDTH`/`STEP_COUNT`/`CURSOR_GENERATE`/`CURSOR_BACK`/`CURSOR_EXECUTE`
+- Clases CSS `.b`/`.h` → `.blue`/`.selected`
+- `openBox()`/`closeBox()` eliminan el string `<div class="box"...>` duplicado 8 veces
+- `drawNubeprint`/`drawDriver` unificadas en `drawSimpleMenu(title, options, backIndex)`
+- `menuRow(option, isSelected)` elimina el prefijo `' >  '`/`'     '` repetido 4 veces
+- `navigateTo(screen, cursor)` y `logout()` extraídas para reutilización en handlers
+- `buildBatPayload()` y `buildStepParams()` extraídas de `doGenerate` (SRP)
+- `navigateList(e, maxIndex)` elimina ArrowUp/Down duplicados en handlers
+- `SCREEN_RENDERERS` y `KEY_HANDLERS` (maps) reemplazan los switch duplicados
+- `[1,1,1,1,1,1]` → `STEP_KEYS.map(() => true)` (booleanos reales)
+- Dead code `IND = 2` y ramas `bord('top'/'bot')` eliminadas
